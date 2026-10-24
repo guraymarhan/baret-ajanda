@@ -269,27 +269,35 @@ function eventsByDay(list) {
 }
 const dots = (list) => (list || []).slice(0, 3).map((e) => `<i class="k-${e.kind}"></i>`).join("");
 
-function headline() {
-  const now = new Date();
-  const ws = startOfWeek(now), we = addDays(ws, 7);
-  const week = [...state.events.values()].filter((e) => { const d = new Date(e.starts_at); return d >= ws && d < we; });
-  const shoots = week.filter((e) => e.kind === "shoot").length;
-  const meets = week.filter((e) => e.kind === "meeting").length;
-  const rentals = week.filter((e) => e.kind === "rental").length;
-  if (!week.length) return "Bu hafta sakin";
+// Üst başlık: Ajanda'da seçili haftanın, Ay görünümünde seçili ayın özeti
+function periodSummary() {
+  let from, to, label;
+  if (state.view === "month") {
+    from = state.month;
+    to = new Date(from.getFullYear(), from.getMonth() + 1, 1);
+    const now = new Date();
+    const diff = (from.getFullYear() - now.getFullYear()) * 12 + from.getMonth() - now.getMonth();
+    label = { 0: "Bu ay", [-1]: "Geçen ay", 1: "Gelecek ay" }[diff] ?? fmt(from, { month: "long", year: from.getFullYear() === now.getFullYear() ? undefined : "numeric" });
+  } else {
+    from = startOfWeek(fromKey(state.selected));
+    to = addDays(from, 7);
+    const diff = Math.round((from - startOfWeek(new Date())) / (7 * 864e5));
+    const last = addDays(to, -1);
+    label = { 0: "Bu hafta", [-1]: "Geçen hafta", 1: "Gelecek hafta" }[diff]
+      ?? (from.getMonth() === last.getMonth() ? `${from.getDate()}–${last.getDate()} ${fmt(last, { month: "short" })}` : `${fmt(from, { day: "numeric", month: "short" })} – ${fmt(last, { day: "numeric", month: "short" })}`);
+  }
+  const inPeriod = [...state.events.values()].filter((e) => { const d = new Date(e.starts_at); return d >= from && d < to; });
+  const count = (k) => inPeriod.filter((e) => e.kind === k).length;
   const parts = [];
-  if (shoots) parts.push(`<em>${shoots} çekim</em>`);
-  if (meets) parts.push(`${meets} toplantı`);
-  if (rentals && parts.length < 2) parts.push(`${rentals} kiralama`);
-  if (!parts.length) parts.push(`${week.length} hatırlatıcı`);
-  return `Bu hafta ${parts.join(", ")}`;
+  if (count("shoot")) parts.push(`<em>${count("shoot")} çekim</em>`);
+  if (count("meeting")) parts.push(`${count("meeting")} toplantı`);
+  if (count("rental")) parts.push(`${count("rental")} kiralama`);
+  return parts.length ? `${esc(label)} ${parts.join(", ")}` : `${esc(label)} sakin`;
 }
 
 let lastAnimKey = "";
 function render() {
   if (!state.me) return;
-  const team = [...state.profiles.values()];
-  const others = team.filter((p) => p.id !== state.me.id).slice(0, 3);
   const scrollY = window.scrollY;
   const animKey = [state.view, state.filter, state.selected, state.month.getTime()].join("|");
   const anim = animKey !== lastAnimKey;
@@ -300,12 +308,9 @@ function render() {
         <div class="top-row">
           <div>
             <div class="eyebrow"><span class="sync ${state.online ? "" : "off"}" id="sync"></span>${esc(fmt(new Date(), { weekday: "long", day: "numeric", month: "long" }))}${CLOUD ? "" : '<span class="badge-demo">Deneme</span>'}</div>
-            <h1 class="title">${headline()}</h1>
+            <h1 class="title">${periodSummary()}</h1>
           </div>
-          <button class="avatar-btn avatars" data-act="settings" aria-label="Ayarlar">
-            ${others.map((p) => `<span class="avatar" style="--c:${esc(p.color)}">${esc(initials(p.name))}</span>`).join("")}
-            <span class="avatar" style="--c:${esc(state.me.color)}">${esc(initials(state.me.name))}</span>
-          </button>
+          <button class="logo-btn" data-act="settings" aria-label="Ekip ve ayarlar"><img src="icons/icon-192.png" alt="" width="46" height="46"></button>
         </div>
         <div class="toolbar">
           <div class="seg" role="group">
@@ -621,12 +626,17 @@ async function openSettings() {
     unsupported: ["⚠️", "Bu tarayıcı bildirim desteklemiyor", "Telefonda Safari (iOS 16.4+) ya da Chrome kullan.", ""],
   }[ps];
   openSheet(`
-    <div class="sheet-title"><h2>Ayarlar</h2><button class="icon-btn" data-close aria-label="Kapat">${ICON.x}</button></div>
+    <div class="sheet-title"><h2>Ekip</h2><button class="icon-btn" data-close aria-label="Kapat">${ICON.x}</button></div>
     <div class="group">
       <div class="profile-card"><span class="avatar" id="pf-avatar" style="--c:${esc(state.me.color)}">${esc(initials(state.me.name))}</span>
-        <div style="flex:1;min-width:0"><input class="field" id="pf-name" value="${esc(state.me.name)}" maxlength="40" style="padding:4px 0;font-weight:700;font-size:18px" aria-label="Adın"><small style="color:var(--ink-3)">Ekip seni bu isimle görür</small></div></div>
+        <div style="flex:1;min-width:0"><input class="field" id="pf-name" value="${esc(state.me.name)}" maxlength="40" style="padding:4px 0;font-weight:700;font-size:18px;border-bottom:1.5px dashed var(--line)" aria-label="Adın"><small style="color:var(--ink-3)">Adına dokunup değiştir, aşağıdan rengini seç. Ekip seni böyle görür.</small></div></div>
       <div class="row"><div class="swatches">${COLORS.map((c) => `<button class="swatch" style="--c:${c}" data-color="${c}" aria-pressed="${c === state.me.color}" aria-label="Renk"></button>`).join("")}</div></div>
     </div>
+
+    ${state.profiles.size > 1 ? `<div class="section-label">Ekip üyeleri · ${state.profiles.size}</div>
+    <div class="group">${[...state.profiles.values()].sort((x, y) => (x.id === state.me.id ? -1 : y.id === state.me.id ? 1 : x.name.localeCompare(y.name, LOCALE))).map((p) => `
+      <div class="set-row"><span class="avatar" style="--c:${esc(p.color)};border:0">${esc(initials(p.name))}</span><div class="txt"><b>${esc(p.name)}${p.id === state.me.id ? ' <small style="display:inline;color:var(--ink-3)">· sen</small>' : ""}</b></div></div>`).join("")}
+    </div>` : ""}
 
     <div class="section-label">Bildirimler</div>
     <div class="group"><div class="set-row"><span class="emo">${pushRow[0]}</span><div class="txt"><b>${pushRow[1]}</b><small>${pushRow[2]}</small></div>${pushRow[3]}</div></div>
