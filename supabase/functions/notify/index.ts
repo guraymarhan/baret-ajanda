@@ -44,6 +44,7 @@ Deno.serve(async (req) => {
     ev = data;
   }
   if (!ev) return json({ error: "event not found" }, 404);
+  if (ev.visibility === "private") return json({ sent: 0, private: true }); // kişisel girdiler paylaşılmaz
 
   const { data: actor } = await admin.from("profiles").select("name").eq("id", user.id).single();
   const who = actor?.name ?? "Bir ekip üyesi";

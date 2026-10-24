@@ -39,6 +39,7 @@ create table if not exists public.events (
   location        text,
   notes           text,
   remind_minutes  integer check (remind_minutes is null or remind_minutes >= 0),
+  visibility      text not null default 'team' check (visibility in ('team', 'private')),
   reminded        boolean not null default false,
   done            boolean not null default false,
   created_by      uuid references auth.users on delete set null default auth.uid(),
@@ -77,7 +78,8 @@ create table if not exists public.push_subscriptions (
 );
 
 -- ───────────────────────── Güvenlik (RLS) ─────────────────────────
--- Giriş yapmış herkes ekibin parçasıdır: tüm ajandayı görür ve düzenler.
+-- Giriş yapmış herkes ekibin parçasıdır: ekip girdilerini görür ve düzenler.
+-- "Kişisel" (visibility = 'private') girdileri yalnızca ekleyen kişi görür.
 -- Ekip tamamlanınca Authentication → Sign In / Providers → "Allow new users to sign up" kapatın.
 alter table public.profiles enable row level security;
 alter table public.events enable row level security;
@@ -91,8 +93,20 @@ create policy "profiles update own" on public.profiles
   for update to authenticated using (id = auth.uid()) with check (id = auth.uid());
 
 drop policy if exists "events team access" on public.events;
-create policy "events team access" on public.events
-  for all to authenticated using (true) with check (true);
+drop policy if exists "events read" on public.events;
+drop policy if exists "events insert" on public.events;
+drop policy if exists "events update" on public.events;
+drop policy if exists "events delete" on public.events;
+create policy "events read" on public.events
+  for select to authenticated using (visibility = 'team' or created_by = auth.uid());
+create policy "events insert" on public.events
+  for insert to authenticated with check (created_by = auth.uid());
+create policy "events update" on public.events
+  for update to authenticated
+  using (visibility = 'team' or created_by = auth.uid())
+  with check (visibility = 'team' or created_by = auth.uid());
+create policy "events delete" on public.events
+  for delete to authenticated using (visibility = 'team' or created_by = auth.uid());
 
 drop policy if exists "push own" on public.push_subscriptions;
 create policy "push own" on public.push_subscriptions

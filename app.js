@@ -49,6 +49,7 @@ const ICON = {
   plus: '<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>',
   check: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.4" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>',
   pin: '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0Z"/><circle cx="12" cy="10" r="3"/></svg>',
+  lock: '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="11" width="16" height="10" rx="2.5"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg>',
   bell: '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/></svg>',
   share: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px"><path d="M4 12v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8"/><path d="m16 6-4-4-4 4"/><path d="M12 2v13"/></svg>',
 };
@@ -73,7 +74,7 @@ let sb = null;
 let backend;
 
 const demoBackend = {
-  KEY: "baret.demo.events.v2",
+  KEY: "baret.demo.events.v3",
   async init() {
     state.me = store.get("baret.demo.me", { id: "demo", name: "Sen", color: "#FF5A3C" });
     state.profiles.set(state.me.id, state.me);
@@ -130,7 +131,7 @@ const cloudBackend = {
   },
   async save(ev) {
     const isNew = !ev.id;
-    const row = { kind: ev.kind, title: ev.title, starts_at: ev.starts_at, ends_at: ev.ends_at, all_day: ev.all_day, location: ev.location, notes: ev.notes, remind_minutes: ev.remind_minutes, done: ev.done };
+    const row = { kind: ev.kind, title: ev.title, starts_at: ev.starts_at, ends_at: ev.ends_at, all_day: ev.all_day, location: ev.location, notes: ev.notes, remind_minutes: ev.remind_minutes, done: ev.done, visibility: ev.visibility || "team" };
     const q = isNew ? sb.from("events").insert(row) : sb.from("events").update(row).eq("id", ev.id);
     const { data, error } = await q.select().single();
     if (error) throw error;
@@ -158,7 +159,7 @@ const cloudBackend = {
 };
 
 function notifyTeam(ev, action) {
-  if (!sb) return;
+  if (!sb || ev.visibility === "private") return; // kişisel girdiler kimseye bildirilmez
   sb.functions.invoke("notify", { body: { event_id: ev.id, action, snapshot: action === "deleted" ? ev : undefined } })
     .catch((e) => console.warn("bildirim gönderilemedi", e));
 }
@@ -353,7 +354,7 @@ function renderCard(e, i = 0) {
   return `<button class="card k-${e.kind} ${e.done ? "is-done" : ""} ${past && !e.done ? "is-past" : ""}" data-open="${e.id}" style="animation-delay:${Math.min(i, 8) * 30}ms">
     <span class="card-icon">${k.emoji}</span>
     <span>
-      <span class="card-time">${esc(timeRange(e))}${e.remind_minutes != null ? ` <span title="Hatırlatma: ${esc(remindText(e.remind_minutes))}">${ICON.bell}</span>` : ""}</span>
+      <span class="card-time">${esc(timeRange(e))}${e.visibility === "private" ? ' <span class="private-tag">' + ICON.lock + "Kişisel</span>" : ""}${e.remind_minutes != null ? ` <span title="Hatırlatma: ${esc(remindText(e.remind_minutes))}">${ICON.bell}</span>` : ""}</span>
       <span class="card-title">${esc(e.title)}</span>
       ${e.location || e.notes ? `<span class="card-meta">${e.location ? `<span>${ICON.pin}${esc(e.location)}</span>` : ""}${e.notes ? `<span>${esc(e.notes.split("\n")[0].slice(0, 60))}</span>` : ""}</span>` : ""}
     </span>
@@ -484,14 +485,27 @@ function eventForm(ev) {
         <div class="row" style="align-items:flex-start"><span class="lbl" style="padding-top:18px">Hatırlat</span>
           <div class="pills">${REMIND_OPTIONS.map(([v, l]) => `<button type="button" class="pill" data-remind="${v}" aria-pressed="${ev.remind_minutes === v}">${l}</button>`).join("")}</div></div>
       </div>
+      <div class="group vis-group" ${ev.kind === "reminder" ? "" : "hidden"}>
+        <div class="row"><span class="lbl">Kimler görsün</span>
+          <div class="vis-seg" role="radiogroup">
+            <button type="button" class="vis" data-vis="team" aria-pressed="${ev.visibility !== "private"}"><b>👥 Ekip</b><small>Herkes görür, bildirim gider</small></button>
+            <button type="button" class="vis" data-vis="private" aria-pressed="${ev.visibility === "private"}"><b>🔒 Sadece ben</b><small>Kişisel, kimse görmez</small></button>
+          </div></div>
+      </div>
       <div class="group"><div class="row"><textarea class="field" name="notes" placeholder="Notlar: ekipman listesi, oyuncular, call sheet linki…">${esc(ev.notes)}</textarea></div></div>
       ${!isNew && creator ? `<p class="meta-line">${esc(creator.name)} ekledi${editor && ev.updated_by !== ev.created_by ? ` · ${esc(editor.name)} düzenledi` : ""} · ${fmt(new Date(ev.updated_at), { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })}</p>` : ""}
       <div class="actions">
-        <button class="btn btn-primary" type="submit">${isNew ? "Kaydet ve ekibe bildir" : "Değişiklikleri kaydet"}</button>
+        <button class="btn btn-primary" type="submit">${submitLabel(ev)}</button>
         ${!isNew ? '<button class="btn btn-danger" type="button" data-act="delete">Sil</button>' : ""}
       </div>
     </form>`;
 }
+
+function submitLabel(ev) {
+  if (ev.id) return "Değişiklikleri kaydet";
+  return isPrivate(ev) ? "Kaydet" : "Kaydet ve ekibe bildir";
+}
+const isPrivate = (ev) => ev.kind === "reminder" && ev.visibility === "private";
 
 function openEvent(ev) {
   let draft = { ...ev };
@@ -509,6 +523,16 @@ function openEvent(ev) {
         $(".end-date-row", body).hidden = !MULTI_DAY[draft.kind];
         if (MULTI_DAY[draft.kind]) $(".end-date-row label", body).textContent = MULTI_DAY[draft.kind];
         if (!draft.id && draft.remind_minutes === DEFAULT_REMIND[prevKind]) setRemind(DEFAULT_REMIND[draft.kind]);
+        $(".vis-group", body).hidden = draft.kind !== "reminder";
+        if (!draft.id && draft.kind === "reminder") form.end.value = ""; // hatırlatıcı tek anlık
+        form.querySelector('[type="submit"]').textContent = submitLabel(draft);
+        return;
+      }
+      const visBtn = e.target.closest("[data-vis]");
+      if (visBtn) {
+        draft.visibility = visBtn.dataset.vis;
+        body.querySelectorAll("[data-vis]").forEach((b) => b.setAttribute("aria-pressed", b === visBtn));
+        form.querySelector('[type="submit"]').textContent = submitLabel(draft);
         return;
       }
       const remindBtn = e.target.closest("[data-remind]");
@@ -555,6 +579,7 @@ function openEvent(ev) {
         location: fd.get("location").trim() || null,
         notes: fd.get("notes").trim() || null,
         all_day: allDay,
+        visibility: isPrivate(draft) ? "private" : "team",
         starts_at: start.toISOString(),
         ends_at: end ? end.toISOString() : null,
       };
@@ -566,7 +591,7 @@ function openEvent(ev) {
         state.selected = dayKey(new Date(saved.starts_at));
         state.month = new Date(start.getFullYear(), start.getMonth(), 1);
         render();
-        toast({ title: `${KINDS[saved.kind].emoji} ${draft.id ? "Güncellendi" : "Eklendi"}`, text: CLOUD ? "Ekip arkadaşına bildirim gitti." : saved.title });
+        toast({ title: `${KINDS[saved.kind].emoji} ${draft.id ? "Güncellendi" : "Eklendi"}`, text: saved.visibility === "private" ? "Kişisel: sadece sen görüyorsun." : CLOUD ? "Ekip arkadaşına bildirim gitti." : saved.title });
       } catch (err) {
         btn.disabled = false; btn.textContent = "Tekrar dene";
         toast({ title: "Kaydedilemedi", text: err.message });
@@ -580,7 +605,7 @@ function newEvent(date = state.selected, kind = state.filter !== "all" ? state.f
   const now = new Date();
   const hour = date === today() && now.getHours() >= 7 && now.getHours() < 22 ? now.getHours() + 1 : 9;
   const start = new Date(d.getFullYear(), d.getMonth(), d.getDate(), hour, 0);
-  openEvent({ kind, title: "", starts_at: start.toISOString(), ends_at: kind === "reminder" ? null : new Date(start.getTime() + 36e5).toISOString(), all_day: false, location: "", notes: "", remind_minutes: DEFAULT_REMIND[kind], done: false });
+  openEvent({ kind, title: "", starts_at: start.toISOString(), ends_at: kind === "reminder" ? null : new Date(start.getTime() + 36e5).toISOString(), all_day: false, location: "", notes: "", remind_minutes: DEFAULT_REMIND[kind], done: false, visibility: "team" });
 }
 
 /* ───────────────────────── Ayarlar ───────────────────────── */
@@ -793,7 +818,7 @@ function seed() {
   const base = { created_at: new Date().toISOString(), updated_at: new Date().toISOString(), done: false, reminded: false };
   return [
     { ...base, id: crypto.randomUUID(), kind: "meeting", title: "Ön prodüksiyon toplantısı", starts_at: at(0, 11), ends_at: at(0, 12, 30), all_day: false, location: "Ofis · toplantı odası", notes: "Senaryo son hali, lokasyon listesi, bütçe", remind_minutes: 15, created_by: "demo-2", updated_by: "demo-2" },
-    { ...base, id: crypto.randomUUID(), kind: "reminder", title: "Kiralama faturasını onayla", starts_at: at(0, 16), ends_at: null, all_day: false, location: null, notes: null, remind_minutes: 0, created_by: "demo", updated_by: "demo" },
+    { ...base, id: crypto.randomUUID(), kind: "reminder", visibility: "private", title: "Kiralama faturasını onayla", starts_at: at(0, 16), ends_at: null, all_day: false, location: null, notes: null, remind_minutes: 0, created_by: "demo", updated_by: "demo" },
     { ...base, id: crypto.randomUUID(), kind: "rental", title: "Arri Alexa + lens seti", starts_at: at(0, 18), ends_at: at(2, 10), all_day: false, location: "Rent House · Şişli", notes: "Depozito ödendi\nİadede batarya sayısını kontrol et", remind_minutes: 60, created_by: "demo", updated_by: "demo" },
     { ...base, id: crypto.randomUUID(), kind: "shoot", title: "Kahve markası reklam çekimi", starts_at: at(1, 7, 30), ends_at: at(1, 19), all_day: false, location: "Kadıköy · Stüdyo 4", notes: "Call time 07:30\nYemek: 13:00", remind_minutes: 1440, created_by: "demo", updated_by: "demo" },
     { ...base, id: crypto.randomUUID(), kind: "shoot", title: "Klip çekimi – dış mekan", starts_at: at(3, 0), ends_at: at(4, 23, 59), all_day: true, location: "Şile sahili", notes: "Hava durumu yedeği: 6 gün sonrası", remind_minutes: 1440, created_by: "demo-2", updated_by: "demo-2" },

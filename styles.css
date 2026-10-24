@@ -7,7 +7,7 @@
   --ink-2: #5E5A55;
   --ink-3: #9A958D;
   --line: rgba(23, 22, 26, .08);
-  --brand: #FFB800;
+  --brand: #FFC000;
   --brand-ink: #2B2100;
   --shoot: #FF5A3C;
   --meeting: #4F5BFF;
@@ -372,3 +372,12 @@ input.field[type="date"], input.field[type="time"] { -webkit-appearance: none; a
   .sheet-layer .sheet { transform: translateY(110%); }
   .sheet-layer.open .sheet { transform: none; }
 }
+
+/* Görünürlük (Ekip / Sadece ben) */
+.vis-seg { flex: 1; display: grid; grid-template-columns: 1fr 1fr; gap: 6px; padding: 10px 0; }
+.vis { text-align: left; padding: 10px 11px; border-radius: 14px; background: var(--surface-2); transition: .15s; }
+.vis b { display: block; font-size: 14px; }
+.vis small { display: block; font-size: 11.5px; color: var(--ink-3); line-height: 1.3; margin-top: 2px; }
+.vis[aria-pressed="true"] { background: var(--ink); color: var(--bg); }
+.vis[aria-pressed="true"] small { color: color-mix(in srgb, var(--bg) 70%, transparent); }
+.private-tag { display: inline-flex; align-items: center; gap: 3px; font-size: 11px; font-weight: 700; color: var(--ink-2); background: var(--surface-2); padding: 2px 7px 2px 6px; border-radius: 99px; }

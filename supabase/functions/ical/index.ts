@@ -55,7 +55,8 @@ Deno.serve(async (req) => {
 
   const since = new Date(Date.now() - 180 * 24 * 60 * 60 * 1000).toISOString();
   const [{ data: events }, { data: people }] = await Promise.all([
-    admin.from("events").select("*").gte("starts_at", since).order("starts_at"),
+    admin.from("events").select("*").gte("starts_at", since)
+      .or(`visibility.eq.team,created_by.eq.${me.id}`).order("starts_at"),
     admin.from("profiles").select("id,name"),
   ]);
   const names = new Map((people ?? []).map((p) => [p.id, p.name]));
@@ -77,7 +78,7 @@ Deno.serve(async (req) => {
     const start = new Date(ev.starts_at);
     const end = ev.ends_at ? new Date(ev.ends_at) : new Date(start.getTime() + (ev.kind === "reminder" ? 15 : 60) * 60_000);
     const desc = [
-      `${LABEL[ev.kind] ?? ""} · ekleyen: ${names.get(ev.created_by) ?? "?"}`,
+      ev.visibility === "private" ? `${LABEL[ev.kind] ?? ""} · kişisel` : `${LABEL[ev.kind] ?? ""} · ekleyen: ${names.get(ev.created_by) ?? "?"}`,
       ev.notes ?? "",
     ].filter(Boolean).join("\n\n");
 

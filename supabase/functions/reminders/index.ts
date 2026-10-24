@@ -1,5 +1,5 @@
 // Baret Ajanda – "reminders" fonksiyonu
-// pg_cron tarafından 5 dakikada bir çağrılır (supabase/cron.sql). Zamanı gelen hatırlatmaları tüm ekibe gönderir.
+// pg_cron tarafından 5 dakikada bir çağrılır (supabase/cron.sql). Zamanı gelen hatırlatmaları gönderir (ekip girdileri herkese, kişisel olanlar sadece sahibine).
 // Gerekli secrets: VAPID_PUBLIC_KEY, VAPID_PRIVATE_KEY, VAPID_SUBJECT, CRON_SECRET
 // Bu fonksiyonda "Verify JWT" KAPALI olmalı (cron kendi gizli anahtarıyla çağırır).
 import { createClient } from "npm:@supabase/supabase-js@2.45.4";
@@ -55,7 +55,9 @@ Deno.serve(async (req) => {
       tag: `reminder-${ev.id}`,
       url: `./?event=${ev.id}`,
     });
-    await Promise.all((subs ?? []).map(async (s) => {
+    // Kişisel hatırlatıcı sadece sahibine, ekip girdileri herkese gider
+    const targets = (subs ?? []).filter((s) => ev.visibility !== "private" || s.user_id === ev.created_by);
+    await Promise.all(targets.map(async (s) => {
       try {
         await webpush.sendNotification({ endpoint: s.endpoint, keys: { p256dh: s.p256dh, auth: s.auth } }, payload, { TTL: 60 * 60 });
       } catch (err) {
