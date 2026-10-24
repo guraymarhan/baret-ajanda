@@ -307,7 +307,7 @@ function render() {
       <header class="top">
         <div class="top-row">
           <div>
-            <div class="eyebrow"><span class="sync ${state.online ? "" : "off"}" id="sync"></span>${esc(fmt(new Date(), { weekday: "long", day: "numeric", month: "long" }))}${CLOUD ? "" : '<span class="badge-demo">Deneme</span>'}</div>
+            <div class="eyebrow"><span class="sync ${state.online ? "" : "off"}" id="sync"></span>${esc(fmt(new Date(), { weekday: "long", day: "numeric", month: "long" }))}</div>
             <h1 class="title">${periodSummary()}</h1>
           </div>
           <button class="logo-btn" data-act="settings" aria-label="Ekip ve ayarlar"><img src="icons/icon-192.png" alt="" width="46" height="46"></button>
