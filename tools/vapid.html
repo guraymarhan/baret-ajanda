@@ -1,0 +1,45 @@
+<!doctype html>
+<html lang="tr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>VAPID Anahtarı</title>
+  <style>
+    :root { --bg: #F5F2EA; --surface: #fff; --ink: #17161A; --ink-2: #5E5A55; --brand: #FFB800; color-scheme: light; }
+    @media (prefers-color-scheme: dark) { :root { --bg: #121214; --surface: #1C1C21; --ink: #F4F2EE; --ink-2: #B4AFA8; color-scheme: dark; } }
+    body { margin: 0; background: var(--bg); color: var(--ink); font: 16px/1.5 system-ui, -apple-system, sans-serif; padding: 24px 16px; }
+    main { max-width: 560px; margin: 0 auto; }
+    h1 { font-size: 24px; margin: 0 0 8px; }
+    p { color: var(--ink-2); }
+    button { background: var(--brand); color: #2B2100; border: 0; border-radius: 14px; padding: 14px 20px; font: inherit; font-weight: 700; cursor: pointer; }
+    .box { background: var(--surface); border-radius: 16px; padding: 14px; margin: 14px 0; }
+    .box b { display: block; margin-bottom: 6px; }
+    code { display: block; word-break: break-all; font-size: 14px; padding: 10px; border-radius: 10px; background: color-mix(in srgb, var(--ink) 6%, transparent); user-select: all; }
+    .warn { font-size: 14px; }
+  </style>
+</head>
+<body>
+<main>
+  <h1>🔑 Bildirim anahtarı üret</h1>
+  <p>Bu sayfa push bildirimleri için gereken VAPID anahtar çiftini tamamen kendi tarayıcında üretir; hiçbir yere gönderilmez.</p>
+  <button id="gen">Anahtar üret</button>
+  <div id="out" hidden>
+    <div class="box"><b>VAPID_PUBLIC_KEY (herkese açık)</b><code id="pub"></code>
+      <p class="warn">Bunu hem <b>config.js</b> dosyasına hem de Supabase secrets'a yaz.</p></div>
+    <div class="box"><b>VAPID_PRIVATE_KEY (gizli!)</b><code id="priv"></code>
+      <p class="warn">Bunu sadece Supabase → Edge Functions → Secrets'a yaz. Kimseyle paylaşma, GitHub'a koyma.</p></div>
+  </div>
+</main>
+<script>
+  const b64u = (buf) => btoa(String.fromCharCode(...new Uint8Array(buf))).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+  document.getElementById("gen").onclick = async () => {
+    const kp = await crypto.subtle.generateKey({ name: "ECDSA", namedCurve: "P-256" }, true, ["sign", "verify"]);
+    const raw = await crypto.subtle.exportKey("raw", kp.publicKey);
+    const jwk = await crypto.subtle.exportKey("jwk", kp.privateKey);
+    document.getElementById("pub").textContent = b64u(raw);
+    document.getElementById("priv").textContent = jwk.d;
+    document.getElementById("out").hidden = false;
+  };
+</script>
+</body>
+</html>
