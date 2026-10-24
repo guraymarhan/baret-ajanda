@@ -289,9 +289,9 @@ function periodSummary() {
   const inPeriod = [...state.events.values()].filter((e) => { const d = new Date(e.starts_at); return d >= from && d < to; });
   const count = (k) => inPeriod.filter((e) => e.kind === k).length;
   const parts = [];
-  if (count("shoot")) parts.push(`<em>${count("shoot")} çekim</em>`);
-  if (count("meeting")) parts.push(`${count("meeting")} toplantı`);
-  if (count("rental")) parts.push(`${count("rental")} kiralama`);
+  for (const k of ["rental", "shoot", "meeting"]) {
+    if (count(k)) parts.push(`<em class="k-${k}">${count(k)} ${KINDS[k].plural}</em>`);
+  }
   return parts.length ? `${esc(label)} ${parts.join(", ")}` : `${esc(label)} sakin`;
 }
 

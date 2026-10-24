@@ -96,7 +96,7 @@ button { cursor: pointer; border: 0; background: none; padding: 0; }
 .top-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
 .eyebrow { font-size: 13px; font-weight: 600; color: var(--ink-3); text-transform: capitalize; letter-spacing: .01em; }
 .title { font-size: 25px; font-weight: 800; letter-spacing: -.035em; margin: 2px 0 0; line-height: 1.1; }
-.title em { font-style: normal; color: var(--shoot); }
+.title em { font-style: normal; color: var(--k); }
 
 .avatars { display: flex; align-items: center; }
 .avatar {
