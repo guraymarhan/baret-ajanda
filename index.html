@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="tr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>Baret Ajanda</title>
+  <meta name="description" content="Ekip için çekim takvimi, toplantılar ve hatırlatıcılar">
+  <meta name="theme-color" content="#F5F2EA" media="(prefers-color-scheme: light)">
+  <meta name="theme-color" content="#121214" media="(prefers-color-scheme: dark)">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="default">
+  <meta name="apple-mobile-web-app-title" content="Baret">
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="icon" href="icons/icon-192.png" type="image/png">
+  <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <div id="root">
+    <div class="splash"><img src="icons/icon-192.png" alt="" width="72" height="72"></div>
+  </div>
+  <div id="sheet-layer" class="sheet-layer" hidden>
+    <div class="sheet-backdrop" data-close></div>
+    <section class="sheet" role="dialog" aria-modal="true">
+      <div class="sheet-grabber" data-close></div>
+      <div class="sheet-body"></div>
+    </section>
+  </div>
+  <div id="toasts" class="toasts" aria-live="polite"></div>
+  <script type="module" src="app.js"></script>
+</body>
+</html>
