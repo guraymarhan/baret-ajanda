@@ -31,7 +31,7 @@ create trigger on_auth_user_created
 -- ───────────────────────── Etkinlikler ─────────────────────────
 create table if not exists public.events (
   id              uuid primary key default gen_random_uuid(),
-  kind            text not null check (kind in ('shoot', 'meeting', 'reminder')),
+  kind            text not null check (kind in ('rental', 'shoot', 'meeting', 'reminder')),
   title           text not null check (length(title) between 1 and 200),
   starts_at       timestamptz not null,
   ends_at         timestamptz,

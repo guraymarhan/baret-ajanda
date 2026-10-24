@@ -5,11 +5,19 @@ const CLOUD = Boolean(SUPABASE_URL && SUPABASE_ANON_KEY);
 const LOCALE = "tr-TR";
 
 const KINDS = {
+  rental: { label: "Kiralama", plural: "kiralama", emoji: "📦" },
   shoot: { label: "Çekim", plural: "çekim", emoji: "🎬" },
   meeting: { label: "Toplantı", plural: "toplantı", emoji: "🤝" },
   reminder: { label: "Hatırlatıcı", plural: "hatırlatıcı", emoji: "⏰" },
 };
-const DEFAULT_REMIND = { shoot: 1440, meeting: 15, reminder: 0 };
+const DEFAULT_REMIND = { rental: 1440, shoot: 1440, meeting: 15, reminder: 0 };
+const MULTI_DAY = { shoot: "Bitiş günü", rental: "İade günü" }; // birden fazla güne yayılabilen türler
+const PLACEHOLDER = {
+  rental: "Örn. Kamera + lens seti – Rent House",
+  shoot: "Örn. Reklam filmi – stüdyo günü",
+  meeting: "Örn. Ön prodüksiyon toplantısı",
+  reminder: "Örn. Oyuncu sözleşmelerini topla",
+};
 const REMIND_OPTIONS = [
   [null, "Yok"], [0, "Tam zamanında"], [15, "15 dk önce"], [60, "1 saat önce"], [180, "3 saat önce"], [1440, "1 gün önce"],
 ];
@@ -65,7 +73,7 @@ let sb = null;
 let backend;
 
 const demoBackend = {
-  KEY: "baret.demo.events",
+  KEY: "baret.demo.events.v2",
   async init() {
     state.me = store.get("baret.demo.me", { id: "demo", name: "Sen", color: "#FF5A3C" });
     state.profiles.set(state.me.id, state.me);
@@ -266,10 +274,12 @@ function headline() {
   const week = [...state.events.values()].filter((e) => { const d = new Date(e.starts_at); return d >= ws && d < we; });
   const shoots = week.filter((e) => e.kind === "shoot").length;
   const meets = week.filter((e) => e.kind === "meeting").length;
+  const rentals = week.filter((e) => e.kind === "rental").length;
   if (!week.length) return "Bu hafta sakin";
   const parts = [];
   if (shoots) parts.push(`<em>${shoots} çekim</em>`);
   if (meets) parts.push(`${meets} toplantı`);
+  if (rentals && parts.length < 2) parts.push(`${rentals} kiralama`);
   if (!parts.length) parts.push(`${week.length} hatırlatıcı`);
   return `Bu hafta ${parts.join(", ")}`;
 }
@@ -461,14 +471,14 @@ function eventForm(ev) {
     <form id="ev-form" autocomplete="off">
       <div class="kinds">${Object.entries(KINDS).map(([k, v]) => `<button type="button" class="kind k-${k}" data-kind="${k}" aria-pressed="${ev.kind === k}"><span>${v.emoji}</span>${v.label}</button>`).join("")}</div>
       <div class="group">
-        <div class="row"><input class="field title-input" name="title" placeholder="${ev.kind === "shoot" ? "Örn. Reklam filmi – stüdyo günü" : ev.kind === "meeting" ? "Örn. Ön prodüksiyon toplantısı" : "Örn. Ekipman kirasını onayla"}" value="${esc(ev.title)}" maxlength="200" required></div>
+        <div class="row"><input class="field title-input" name="title" placeholder="${PLACEHOLDER[ev.kind]}" value="${esc(ev.title)}" maxlength="200" required></div>
         <div class="row"><span class="ico">${ICON.pin}</span><input class="field" name="location" placeholder="Konum ekle" value="${esc(ev.location)}"></div>
       </div>
       <div class="group">
         <div class="row"><span class="lbl">Tüm gün</span><label class="switch"><input type="checkbox" name="all_day" ${ev.all_day ? "checked" : ""}><i></i></label></div>
         <div class="row"><label for="f-date">Tarih</label><input class="field" id="f-date" type="date" name="date" value="${dayKey(s)}" required></div>
         <div class="row time-row" ${ev.all_day ? "hidden" : ""}><label>Saat</label><div class="times"><input class="field" type="time" name="start" value="${timeStr(s)}" aria-label="Başlangıç"><span class="sep">–</span><input class="field" type="time" name="end" value="${e ? timeStr(e) : ""}" aria-label="Bitiş"></div></div>
-        <div class="row end-date-row" ${ev.kind === "shoot" ? "" : "hidden"}><label for="f-end">Bitiş günü</label><input class="field" id="f-end" type="date" name="end_date" value="${e && dayKey(e) !== dayKey(s) ? dayKey(e) : ""}" min="${dayKey(s)}"></div>
+        <div class="row end-date-row" ${MULTI_DAY[ev.kind] ? "" : "hidden"}><label for="f-end">${MULTI_DAY[ev.kind] || "Bitiş günü"}</label><input class="field" id="f-end" type="date" name="end_date" value="${e && dayKey(e) !== dayKey(s) ? dayKey(e) : ""}" min="${dayKey(s)}"></div>
       </div>
       <div class="group">
         <div class="row" style="align-items:flex-start"><span class="lbl" style="padding-top:18px">Hatırlat</span>
@@ -495,8 +505,9 @@ function openEvent(ev) {
         const prevKind = draft.kind;
         draft.kind = kindBtn.dataset.kind;
         body.querySelectorAll("[data-kind]").forEach((b) => b.setAttribute("aria-pressed", b === kindBtn));
-        form.title.placeholder = { shoot: "Örn. Reklam filmi – stüdyo günü", meeting: "Örn. Ön prodüksiyon toplantısı", reminder: "Örn. Ekipman kirasını onayla" }[draft.kind];
-        $(".end-date-row", body).hidden = draft.kind !== "shoot";
+        form.title.placeholder = PLACEHOLDER[draft.kind];
+        $(".end-date-row", body).hidden = !MULTI_DAY[draft.kind];
+        if (MULTI_DAY[draft.kind]) $(".end-date-row label", body).textContent = MULTI_DAY[draft.kind];
         if (!draft.id && draft.remind_minutes === DEFAULT_REMIND[prevKind]) setRemind(DEFAULT_REMIND[draft.kind]);
         return;
       }
@@ -530,9 +541,9 @@ function openEvent(ev) {
       const [sh, sm] = allDay ? [0, 0] : (fd.get("start") || "09:00").split(":").map(Number);
       const start = new Date(y, mo - 1, d, sh, sm);
       let end = null;
-      const endDate = draft.kind === "shoot" && fd.get("end_date") ? fd.get("end_date").split("-").map(Number) : [y, mo, d];
+      const endDate = MULTI_DAY[draft.kind] && fd.get("end_date") ? fd.get("end_date").split("-").map(Number) : [y, mo, d];
       if (allDay) {
-        if (draft.kind === "shoot" && fd.get("end_date") && fd.get("end_date") > fd.get("date")) end = new Date(endDate[0], endDate[1] - 1, endDate[2], 23, 59);
+        if (MULTI_DAY[draft.kind] && fd.get("end_date") && fd.get("end_date") > fd.get("date")) end = new Date(endDate[0], endDate[1] - 1, endDate[2], 23, 59);
       } else if (fd.get("end")) {
         const [eh, em] = fd.get("end").split(":").map(Number);
         end = new Date(endDate[0], endDate[1] - 1, endDate[2], eh, em);
@@ -782,8 +793,9 @@ function seed() {
   const base = { created_at: new Date().toISOString(), updated_at: new Date().toISOString(), done: false, reminded: false };
   return [
     { ...base, id: crypto.randomUUID(), kind: "meeting", title: "Ön prodüksiyon toplantısı", starts_at: at(0, 11), ends_at: at(0, 12, 30), all_day: false, location: "Ofis · toplantı odası", notes: "Senaryo son hali, lokasyon listesi, bütçe", remind_minutes: 15, created_by: "demo-2", updated_by: "demo-2" },
-    { ...base, id: crypto.randomUUID(), kind: "reminder", title: "Kamera ve lens kirasını onayla", starts_at: at(0, 16), ends_at: null, all_day: false, location: null, notes: null, remind_minutes: 0, created_by: "demo", updated_by: "demo" },
-    { ...base, id: crypto.randomUUID(), kind: "shoot", title: "Kahve markası reklam çekimi", starts_at: at(1, 7, 30), ends_at: at(1, 19), all_day: false, location: "Kadıköy · Stüdyo 4", notes: "Call time 07:30\nArri Alexa + 2 lens seti\nYemek: 13:00", remind_minutes: 1440, created_by: "demo", updated_by: "demo" },
+    { ...base, id: crypto.randomUUID(), kind: "reminder", title: "Kiralama faturasını onayla", starts_at: at(0, 16), ends_at: null, all_day: false, location: null, notes: null, remind_minutes: 0, created_by: "demo", updated_by: "demo" },
+    { ...base, id: crypto.randomUUID(), kind: "rental", title: "Arri Alexa + lens seti", starts_at: at(0, 18), ends_at: at(2, 10), all_day: false, location: "Rent House · Şişli", notes: "Depozito ödendi\nİadede batarya sayısını kontrol et", remind_minutes: 60, created_by: "demo", updated_by: "demo" },
+    { ...base, id: crypto.randomUUID(), kind: "shoot", title: "Kahve markası reklam çekimi", starts_at: at(1, 7, 30), ends_at: at(1, 19), all_day: false, location: "Kadıköy · Stüdyo 4", notes: "Call time 07:30\nYemek: 13:00", remind_minutes: 1440, created_by: "demo", updated_by: "demo" },
     { ...base, id: crypto.randomUUID(), kind: "shoot", title: "Klip çekimi – dış mekan", starts_at: at(3, 0), ends_at: at(4, 23, 59), all_day: true, location: "Şile sahili", notes: "Hava durumu yedeği: 6 gün sonrası", remind_minutes: 1440, created_by: "demo-2", updated_by: "demo-2" },
     { ...base, id: crypto.randomUUID(), kind: "meeting", title: "Müşteriyle ofline izleme", starts_at: at(5, 14), ends_at: at(5, 15), all_day: false, location: "Online · Meet", notes: null, remind_minutes: 60, created_by: "demo", updated_by: "demo" },
     { ...base, id: crypto.randomUUID(), kind: "reminder", title: "Oyuncu sözleşmelerini topla", starts_at: at(2, 10), ends_at: null, all_day: false, location: null, notes: null, remind_minutes: 0, created_by: "demo-2", updated_by: "demo-2" },

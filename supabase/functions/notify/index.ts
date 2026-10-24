@@ -6,6 +6,7 @@ import webpush from "npm:web-push@3.6.7";
 
 const TZ = "Europe/Istanbul";
 const KIND = {
+  rental: { emoji: "📦", label: "kiralama" },
   shoot: { emoji: "🎬", label: "çekim" },
   meeting: { emoji: "🤝", label: "toplantı" },
   reminder: { emoji: "⏰", label: "hatırlatıcı" },

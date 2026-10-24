@@ -1,13 +1,13 @@
 # 🪖 Baret Ajanda
 
-Prodüksiyon ekibi için ortak ajanda: **çekim takvimi, toplantılar ve hatırlatıcılar**. Telefona uygulama gibi kurulur (PWA), ekip arasında anlık senkron olur, biri yeni girdi ekleyince diğerlerine bildirim düşer ve iPhone Takvimi'ne abone olunabilir.
+Prodüksiyon ekibi için ortak ajanda: **kiralamalar, çekim takvimi, toplantılar ve hatırlatıcılar**. Telefona uygulama gibi kurulur (PWA), ekip arasında anlık senkron olur, biri yeni girdi ekleyince diğerlerine bildirim düşer ve iPhone Takvimi'ne abone olunabilir.
 
 **Uygulama:** https://guraymarhan.github.io/baret-ajanda/
 **Kurulum:** [KURULUM.md](KURULUM.md)
 
 ## Özellikler
 
-- 🎬 Çekim (çok günlü olabilir), 🤝 toplantı, ⏰ hatırlatıcı (tamamlandı işaretli)
+- 📦 kiralama (alış–iade), 🎬 çekim (çok günlü olabilir), 🤝 toplantı, ⏰ hatırlatıcı (tamamlandı işaretli)
 - Haftalık şerit + ajanda listesi, aylık takvim görünümü, türe göre filtre
 - Gerçek zamanlı senkron: ekip arkadaşının eklediği girdi anında ekranına düşer
 - Push bildirimi: yeni girdi, değişiklik, silme ve zamanı gelen hatırlatmalar

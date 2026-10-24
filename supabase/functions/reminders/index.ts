@@ -6,7 +6,7 @@ import { createClient } from "npm:@supabase/supabase-js@2.45.4";
 import webpush from "npm:web-push@3.6.7";
 
 const TZ = "Europe/Istanbul";
-const EMOJI: Record<string, string> = { shoot: "🎬", meeting: "🤝", reminder: "⏰" };
+const EMOJI: Record<string, string> = { rental: "📦", shoot: "🎬", meeting: "🤝", reminder: "⏰" };
 
 function leadText(min: number) {
   if (min === 0) return "Şimdi";

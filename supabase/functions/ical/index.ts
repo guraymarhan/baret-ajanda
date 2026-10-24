@@ -5,8 +5,8 @@
 import { createClient } from "npm:@supabase/supabase-js@2.45.4";
 
 const TZ = "Europe/Istanbul";
-const EMOJI: Record<string, string> = { shoot: "🎬", meeting: "🤝", reminder: "⏰" };
-const LABEL: Record<string, string> = { shoot: "Çekim", meeting: "Toplantı", reminder: "Hatırlatıcı" };
+const EMOJI: Record<string, string> = { rental: "📦", shoot: "🎬", meeting: "🤝", reminder: "⏰" };
+const LABEL: Record<string, string> = { rental: "Kiralama", shoot: "Çekim", meeting: "Toplantı", reminder: "Hatırlatıcı" };
 
 const enc = new TextEncoder();
 
