@@ -50,6 +50,15 @@ create table if not exists public.events (
 
 create index if not exists events_starts_at_idx on public.events (starts_at);
 
+-- Kiralamalar birbiriyle aynı saatlere denk gelemez (iki kişi aynı anda eklese bile)
+do $$
+begin
+  alter table public.events add constraint rentals_no_overlap
+    exclude using gist (tstzrange(starts_at, coalesce(ends_at, starts_at), '[)') with &&)
+    where (kind = 'rental');
+exception when duplicate_object then null;
+end $$;
+
 create or replace function public.touch_event()
 returns trigger language plpgsql as $$
 begin

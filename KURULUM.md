@@ -65,9 +65,9 @@ Sol menü → **Edge Functions** → **Deploy a new function** → **Via Editor*
 
 1. **SQL Editor** → **New query**.
 2. [`supabase/cron.sql`](supabase/cron.sql) içeriğini yapıştır.
-3. İçindeki `PROJE_REF` yazısını kendi proje kimliğinle (Project Settings → General → **Project ID**), `CRON_SECRET` yazısını Adım 5'te uydurduğun metinle değiştir → **Run**.
+3. İçindeki `PROJE_REF` yazısını (iki yerde) kendi proje kimliğinle (Project Settings → General → **Project ID**), `CRON_SECRET` yazısını da (iki yerde) Adım 5'te uydurduğun metinle değiştir → **Run**.
 
-Artık her 5 dakikada bir, zamanı gelen hatırlatmalar herkesin telefonuna bildirim olarak düşer.
+Artık her 5 dakikada bir zamanı gelen hatırlatmalar, her sabah 09:00'da da "Günaydın 🪖" bildirimi (motivasyon cümlesi + günün özeti) telefonlara düşer.
 
 ## Adım 8 – Uygulamayı Supabase'e bağla
 

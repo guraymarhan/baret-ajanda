@@ -247,6 +247,30 @@ function remindText(m) {
   return opt ? opt[1] : `${m} dk önce`;
 }
 
+/* ───────────────────────── Kiralama kuralları ───────────────────────── */
+const rentalEnd = (e) => new Date(e.ends_at || new Date(new Date(e.starts_at).getTime() + 36e5));
+// Aynı saatlere denk gelen başka bir kiralama var mı? (Kiralamalar birbirinin üstüne yazılamaz)
+function rentalConflict(ev) {
+  if (ev.kind !== "rental") return null;
+  const s = new Date(ev.starts_at), e = rentalEnd(ev);
+  return [...state.events.values()].find((o) => o.kind === "rental" && o.id !== ev.id && new Date(o.starts_at) < e && rentalEnd(o) > s) || null;
+}
+// Ay içindeki toplam kiralama süresi (saat). Aya taşan kısımlar kırpılır.
+function rentalHours(from, to) {
+  let ms = 0;
+  for (const e of state.events.values()) {
+    if (e.kind !== "rental") continue;
+    const s = Math.max(new Date(e.starts_at), from), end = Math.min(rentalEnd(e), to);
+    if (end > s) ms += end - s;
+  }
+  return Math.round(ms / 36e5);
+}
+function hoursText(h) {
+  if (h < 24) return `${h} saat`;
+  const d = Math.floor(h / 24), r = h % 24;
+  return r ? `${d} gün ${r} saat` : `${d} gün`;
+}
+
 /* ───────────────────────── Görünüm ───────────────────────── */
 const root = $("#root");
 
@@ -411,6 +435,11 @@ function renderMonth() {
         <div class="nav"><button data-month="-1" aria-label="Önceki ay">${ICON.chevL}</button><button data-month="1" aria-label="Sonraki ay">${ICON.chevR}</button></div></div>
       <div class="month-grid">${cells}</div>
     </div>
+    ${(() => {
+      const h = rentalHours(m, new Date(m.getFullYear(), m.getMonth() + 1, 1));
+      const n = [...state.events.values()].filter((e) => e.kind === "rental" && new Date(e.starts_at) < new Date(m.getFullYear(), m.getMonth() + 1, 1) && rentalEnd(e) > m).length;
+      return n ? `<div class="stat k-rental"><span class="stat-icon">📦</span><div><small>${esc(fmt(m, { month: "long" }))} kiralama süresi</small><b>${h} saat</b>${h >= 24 ? `<span>${hoursText(h)} · ${n} kiralama</span>` : `<span>${n} kiralama</span>`}</div></div>` : "";
+    })()}
     <section class="day-group"><div class="day-head ${state.selected === today() ? "is-today" : ""}"><h2>${relDay(state.selected)}</h2><span>${fmt(fromKey(state.selected), { weekday: "long" })}</span></div>
       ${list.length ? list.map(renderCard).join("") : `<button class="card" data-act="new" data-date="${state.selected}" style="grid-template-columns:1fr;box-shadow:none;background:transparent;border:1.5px dashed var(--line);color:var(--ink-3);font-weight:600">Bu gün boş · eklemek için dokun</button>`}
     </section>`;
@@ -502,6 +531,7 @@ function eventForm(ev) {
       </div>
       <div class="group"><div class="row"><textarea class="field" name="notes" placeholder="Notlar: ekipman listesi, oyuncular, call sheet linki…">${esc(ev.notes)}</textarea></div></div>
       ${!isNew && creator ? `<p class="meta-line">${esc(creator.name)} ekledi${editor && ev.updated_by !== ev.created_by ? ` · ${esc(editor.name)} düzenledi` : ""} · ${fmt(new Date(ev.updated_at), { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })}</p>` : ""}
+      <div class="form-error" hidden></div>
       <div class="actions">
         <button class="btn btn-primary" type="submit">${submitLabel(ev)}</button>
         ${!isNew ? '<button class="btn btn-danger" type="button" data-act="delete">Sil</button>' : ""}
@@ -591,6 +621,20 @@ function openEvent(ev) {
         starts_at: start.toISOString(),
         ends_at: end ? end.toISOString() : null,
       };
+      if (payload.kind === "rental" && !payload.ends_at) {
+        // Bitişsiz kiralama: tüm günse gün sonuna, saatliyse 1 saat sonrasına kadar say
+        payload.ends_at = (allDay ? new Date(y, mo - 1, d, 23, 59) : new Date(start.getTime() + 36e5)).toISOString();
+      }
+      const errBox = $(".form-error", body);
+      const clash = rentalConflict(payload);
+      if (clash) {
+        errBox.innerHTML = `<b>⚠️ Kiralamalar kesişiyor</b>“${esc(clash.title)}” bu saatlerde zaten kayıtlı (${esc(timeRange(clash))}, ${esc(relDay(dayKey(new Date(clash.starts_at)), true))}). Saatleri değiştir ya da önce o kaydı düzenle.`;
+        errBox.hidden = false;
+        errBox.scrollIntoView({ behavior: "smooth", block: "center" });
+        if (navigator.vibrate) navigator.vibrate([20, 40, 20]);
+        return;
+      }
+      errBox.hidden = true;
       const btn = form.querySelector('[type="submit"]');
       btn.disabled = true; btn.textContent = "Kaydediliyor…";
       try {
@@ -602,7 +646,8 @@ function openEvent(ev) {
         toast({ title: `${KINDS[saved.kind].emoji} ${draft.id ? "Güncellendi" : "Eklendi"}`, text: saved.visibility === "private" ? "Kişisel: sadece sen görüyorsun." : CLOUD ? "Ekip arkadaşına bildirim gitti." : saved.title });
       } catch (err) {
         btn.disabled = false; btn.textContent = "Tekrar dene";
-        toast({ title: "Kaydedilemedi", text: err.message });
+        const overlap = err.code === "23P01"; // veritabanındaki kesişme kuralı (başka cihazdan aynı anda eklenmiş olabilir)
+        toast({ title: overlap ? "⚠️ Kiralamalar kesişiyor" : "Kaydedilemedi", text: overlap ? "Bu saatlerde başka bir kiralama var." : err.message });
       }
     });
   });

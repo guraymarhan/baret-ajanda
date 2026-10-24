@@ -385,3 +385,19 @@ input.field[type="date"], input.field[type="time"] { -webkit-appearance: none; a
 .logo-btn { flex: none; width: 46px; height: 46px; border-radius: 14px; overflow: hidden; box-shadow: 0 4px 14px rgba(0,0,0,.18); transition: transform .15s; }
 .logo-btn img { display: block; width: 100%; height: 100%; }
 .logo-btn:active { transform: scale(.92); }
+
+/* Form uyarısı */
+.form-error { margin: 0 0 12px; padding: 12px 14px; border-radius: 16px; font-size: 14px; line-height: 1.4;
+  background: color-mix(in srgb, var(--danger) 11%, var(--surface)); color: var(--ink); box-shadow: inset 0 0 0 1.5px color-mix(in srgb, var(--danger) 45%, transparent);
+  animation: shake .35s ease; }
+.form-error b { display: block; color: var(--danger); margin-bottom: 2px; }
+@keyframes shake { 20%, 60% { transform: translateX(-5px); } 40%, 80% { transform: translateX(5px); } }
+
+/* Ay istatistiği */
+.stat { display: flex; align-items: center; gap: 14px; margin-top: 10px; padding: 14px 16px; border-radius: 20px;
+  background: color-mix(in srgb, var(--k) 10%, var(--surface)); box-shadow: var(--shadow); }
+.stat-icon { width: 44px; height: 44px; border-radius: 14px; display: grid; place-items: center; font-size: 22px; background: color-mix(in srgb, var(--k) 16%, transparent); flex: none; }
+.stat small { display: block; font-size: 12.5px; font-weight: 600; color: var(--ink-3); }
+.stat small::first-letter { text-transform: uppercase; }
+.stat b { display: block; font-size: 22px; font-weight: 800; letter-spacing: -.02em; color: var(--k); line-height: 1.15; }
+.stat div > span { display: block; font-size: 13px; color: var(--ink-2); }
