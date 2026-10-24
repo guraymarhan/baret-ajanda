@@ -401,3 +401,31 @@ input.field[type="date"], input.field[type="time"] { -webkit-appearance: none; a
 .stat small::first-letter { text-transform: uppercase; }
 .stat b { display: block; font-size: 22px; font-weight: 800; letter-spacing: -.02em; color: var(--k); line-height: 1.15; }
 .stat div > span { display: block; font-size: 13px; color: var(--ink-2); }
+
+/* ───────── Teslimatlar ───────── */
+.seg-badge { display: inline-grid; place-items: center; min-width: 18px; height: 18px; padding: 0 5px; margin-left: 3px; border-radius: 99px; background: var(--brand); color: var(--brand-ink); font-size: 11px; font-weight: 800; vertical-align: 1px; }
+.title em.late, .due.late { color: var(--danger); }
+.quick-add { display: flex; align-items: center; gap: 10px; margin: 14px 0 12px; padding: 6px 6px 6px 14px; border-radius: 18px; background: var(--surface); box-shadow: var(--shadow); }
+.quick-add .qa-plus { color: var(--ink-3); display: grid; }
+.quick-add input { flex: 1; min-width: 0; border: 0; outline: 0; background: none; font-size: 16px; padding: 10px 0; }
+.quick-add input::placeholder { color: var(--ink-3); }
+.qa-btn { padding: 10px 16px; border-radius: 13px; background: var(--ink); color: var(--bg); font-weight: 700; font-size: 14px; }
+.task-list { background: var(--surface); border-radius: var(--radius); box-shadow: var(--shadow); overflow: hidden; }
+.task { display: flex; align-items: center; gap: 12px; padding: 12px 14px; transition: opacity .35s, transform .35s; }
+.task + .task { border-top: 1px solid var(--line); }
+.task.leaving { opacity: .35; transform: translateY(10px); }
+.task.returning { opacity: .35; transform: translateY(-10px); }
+.tcheck { width: 26px; height: 26px; flex: none; border-radius: 50%; display: grid; place-items: center; color: #fff;
+  box-shadow: inset 0 0 0 2px var(--ink-3); transition: .2s; }
+.tcheck svg { opacity: 0; transform: scale(.4); transition: .2s cubic-bezier(.3,1.6,.5,1); }
+.tcheck[aria-checked="true"] { background: var(--reminder); box-shadow: none; }
+.tcheck[aria-checked="true"] svg { opacity: 1; transform: none; }
+.tbody { flex: 1; min-width: 0; text-align: left; display: flex; flex-direction: column; gap: 3px; padding: 2px 0; }
+.ttitle { font-size: 15.5px; font-weight: 650; letter-spacing: -.01em; overflow-wrap: anywhere; }
+.tmeta { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; font-size: 12.5px; color: var(--ink-3); }
+.due { font-weight: 700; color: var(--ink-2); background: var(--surface-2); padding: 1px 7px; border-radius: 99px; }
+.due.late { background: color-mix(in srgb, var(--danger) 12%, transparent); }
+.due.soon { color: var(--shoot); background: color-mix(in srgb, var(--shoot) 12%, transparent); }
+.task.is-done .ttitle { text-decoration: line-through; color: var(--ink-3); font-weight: 500; }
+.done-head { display: flex; align-items: center; justify-content: space-between; width: 100%; margin: 20px 0 8px; padding: 4px 6px; font-size: 12px; font-weight: 700; color: var(--ink-3); text-transform: uppercase; letter-spacing: .06em; }
+.done-list { opacity: .85; }

@@ -9,6 +9,7 @@ Prodüksiyon ekibi için ortak ajanda: **kiralamalar, çekim takvimi, toplantıl
 
 - 📦 kiralama (alış–iade), 🎬 çekim (çok günlü olabilir), 🤝 toplantı, ⏰ hatırlatıcı (ekip ya da kişisel, tamamlandı işaretli)
 - Haftalık şerit + ajanda listesi, aylık takvim görünümü, türe göre filtre
+- 📋 Teslimat listesi: kurgu teslimi, dosya aktarımı gibi ekip yapılacakları; tiklenen alta iner
 - Gerçek zamanlı senkron: ekip arkadaşının eklediği girdi anında ekranına düşer
 - Push bildirimi: yeni girdi, değişiklik, silme ve zamanı gelen hatırlatmalar
 - iPhone / Google Takvim aboneliği (webcal, kişisel link)

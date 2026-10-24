@@ -77,6 +77,34 @@ create trigger events_touch
   before update on public.events
   for each row execute function public.touch_event();
 
+-- ───────────────────────── Teslimatlar (genel yapılacaklar) ─────────────────────────
+create table if not exists public.tasks (
+  id          uuid primary key default gen_random_uuid(),
+  title       text not null check (length(title) between 1 and 200),
+  due_date    date,
+  notes       text,
+  done        boolean not null default false,
+  done_at     timestamptz,
+  done_by     uuid references auth.users on delete set null,
+  created_by  uuid references auth.users on delete set null default auth.uid(),
+  updated_by  uuid references auth.users on delete set null default auth.uid(),
+  created_at  timestamptz not null default now(),
+  updated_at  timestamptz not null default now()
+);
+
+create or replace function public.touch_task()
+returns trigger language plpgsql as $$
+begin
+  new.updated_at := now();
+  new.updated_by := coalesce(auth.uid(), new.updated_by);
+  return new;
+end $$;
+
+drop trigger if exists tasks_touch on public.tasks;
+create trigger tasks_touch
+  before update on public.tasks
+  for each row execute function public.touch_task();
+
 -- ───────────────────────── Push abonelikleri ─────────────────────────
 create table if not exists public.push_subscriptions (
   endpoint    text primary key,
@@ -93,6 +121,7 @@ create table if not exists public.push_subscriptions (
 alter table public.profiles enable row level security;
 alter table public.events enable row level security;
 alter table public.push_subscriptions enable row level security;
+alter table public.tasks enable row level security;
 
 drop policy if exists "profiles read" on public.profiles;
 create policy "profiles read" on public.profiles
@@ -117,6 +146,10 @@ create policy "events update" on public.events
 create policy "events delete" on public.events
   for delete to authenticated using (visibility = 'team' or created_by = auth.uid());
 
+drop policy if exists "tasks team access" on public.tasks;
+create policy "tasks team access" on public.tasks
+  for all to authenticated using (true) with check (true);
+
 drop policy if exists "push own" on public.push_subscriptions;
 create policy "push own" on public.push_subscriptions
   for all to authenticated using (user_id = auth.uid()) with check (user_id = auth.uid());
@@ -131,5 +164,11 @@ end $$;
 do $$
 begin
   alter publication supabase_realtime add table public.profiles;
+exception when duplicate_object then null;
+end $$;
+alter table public.tasks replica identity full;
+do $$
+begin
+  alter publication supabase_realtime add table public.tasks;
 exception when duplicate_object then null;
 end $$;

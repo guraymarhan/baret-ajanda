@@ -60,6 +60,8 @@ const state = {
   me: null,              // { id, name, color, ical_token }
   profiles: new Map(),   // id → profil
   events: new Map(),     // id → etkinlik
+  tasks: new Map(),      // id → teslimat (genel yapılacaklar)
+  showDone: store.get("baret.showDone", true),
   view: store.get("baret.view", "agenda"),
   filter: "all",
   selected: today(),
@@ -74,7 +76,8 @@ let sb = null;
 let backend;
 
 const demoBackend = {
-  KEY: "baret.demo.events", // bu anahtar değişmemeli, değişirse cihazdaki veriler kaybolur
+  KEY: "baret.demo.events", // bu anahtarlar değişmemeli, değişirse cihazdaki veriler kaybolur
+  TASKS: "baret.demo.tasks",
   async init() {
     state.me = store.get("baret.demo.me", { id: "demo", name: "Sen", color: "#FF5A3C" });
     state.profiles.set(state.me.id, state.me);
@@ -85,12 +88,25 @@ const demoBackend = {
     let list = store.get(this.KEY, null);
     if (!list) { list = seed(); store.set(this.KEY, list); }
     list.forEach((e) => state.events.set(e.id, e));
+    let tasks = store.get(this.TASKS, null);
+    if (!tasks) { tasks = seedTasks(); store.set(this.TASKS, tasks); }
+    tasks.forEach((t) => state.tasks.set(t.id, t));
     // Aynı tarayıcıdaki diğer sekmelerle senkron (gerçek senkronun küçük bir provası)
     this.bc = "BroadcastChannel" in window ? new BroadcastChannel("baret") : null;
-    if (this.bc) this.bc.onmessage = () => { state.events.clear(); store.get(this.KEY, []).forEach((e) => state.events.set(e.id, e)); render(); };
+    if (this.bc) this.bc.onmessage = () => {
+      state.events.clear(); store.get(this.KEY, []).forEach((e) => state.events.set(e.id, e));
+      state.tasks.clear(); store.get(this.TASKS, []).forEach((t) => state.tasks.set(t.id, t));
+      render();
+    };
     return true;
   },
-  persist() { store.set(this.KEY, [...state.events.values()]); this.bc?.postMessage("sync"); },
+  persist() { store.set(this.KEY, [...state.events.values()]); store.set(this.TASKS, [...state.tasks.values()]); this.bc?.postMessage("sync"); },
+  async saveTask(t) {
+    const now = new Date().toISOString();
+    const row = { ...t, id: t.id || crypto.randomUUID(), created_at: t.created_at || now, updated_at: now, created_by: t.created_by || state.me.id, updated_by: state.me.id };
+    state.tasks.set(row.id, row); this.persist(); return row;
+  },
+  async removeTask(t) { state.tasks.delete(t.id); this.persist(); },
   async save(ev) {
     const now = new Date().toISOString();
     const row = { ...ev, id: ev.id || crypto.randomUUID(), updated_at: now, created_at: ev.created_at || now, created_by: ev.created_by || state.me.id, updated_by: state.me.id };
@@ -124,11 +140,16 @@ const cloudBackend = {
     if (error) { toast({ title: "Bağlantı sorunu", text: error.message }); return; }
     state.events.clear();
     data.forEach((e) => state.events.set(e.id, e));
+    // Teslimatlar: tüm açıklar + son 90 günde tamamlananlar
+    const { data: tasks } = await sb.from("tasks").select("*").or(`done.eq.false,done_at.gte.${addDays(new Date(), -90).toISOString()}`);
+    state.tasks.clear();
+    (tasks || []).forEach((t) => state.tasks.set(t.id, t));
     render();
   },
   subscribe() {
     sb.channel("baret-events")
       .on("postgres_changes", { event: "*", schema: "public", table: "events" }, onRemoteChange)
+      .on("postgres_changes", { event: "*", schema: "public", table: "tasks" }, onRemoteTask)
       .on("postgres_changes", { event: "*", schema: "public", table: "profiles" }, ({ new: p }) => { if (p?.id) { state.profiles.set(p.id, p); if (p.id === state.me.id) state.me = p; render(); } })
       .subscribe((status) => { state.online = status === "SUBSCRIBED"; renderSync(); });
   },
@@ -148,6 +169,24 @@ const cloudBackend = {
     if (error) throw error;
     state.events.delete(ev.id);
     notifyTeam(ev, "deleted");
+  },
+  async saveTask(t) {
+    const isNew = !t.id;
+    const row = { title: t.title, due_date: t.due_date || null, notes: t.notes || null, done: !!t.done, done_at: t.done ? (t.done_at || new Date().toISOString()) : null, done_by: t.done ? (t.done_by || state.me.id) : null };
+    const q = isNew ? sb.from("tasks").insert(row) : sb.from("tasks").update(row).eq("id", t.id);
+    const { data, error } = await q.select().single();
+    if (error) throw error;
+    const prev = state.tasks.get(data.id);
+    state.tasks.set(data.id, data);
+    const action = isNew ? "created" : data.done && !prev?.done ? "done" : null;
+    if (action) sb.functions.invoke("notify", { body: { table: "tasks", task_id: data.id, action } }).catch(() => {});
+    return data;
+  },
+  async removeTask(t) {
+    mineIds.add(t.id);
+    const { error } = await sb.from("tasks").delete().eq("id", t.id);
+    if (error) throw error;
+    state.tasks.delete(t.id);
   },
   async updateProfile(p) {
     const { data, error } = await sb.from("profiles").update(p).eq("id", state.me.id).select().single();
@@ -184,6 +223,18 @@ function onRemoteChange({ eventType, new: row, old }) {
     toast({ who: actor, title: `${actor?.name ?? "Ekip"} yeni ${KINDS[row.kind].plural} ekledi`, text: `${row.title} · ${whenText(row)}`, id: row.id });
   } else if (eventType === "UPDATE" && byOther && prev && MEANINGFUL.some((k) => String(prev[k]) !== String(row[k]))) {
     toast({ who: actor, title: `${actor?.name ?? "Ekip"} güncelledi`, text: row.title, id: row.id });
+  }
+  render();
+}
+
+function onRemoteTask({ eventType, new: row, old }) {
+  if (eventType === "DELETE") { state.tasks.delete(old.id); mineIds.delete(old.id); render(); return; }
+  const prev = state.tasks.get(row.id);
+  state.tasks.set(row.id, row);
+  const actor = state.profiles.get(row.updated_by);
+  if (row.updated_by && row.updated_by !== state.me.id) {
+    if (eventType === "INSERT") toast({ who: actor, title: `${actor?.name ?? "Ekip"} yeni teslimat ekledi`, text: row.title });
+    else if (row.done && !prev?.done) toast({ who: actor, title: `✅ ${actor?.name ?? "Ekip"} tamamladı`, text: row.title });
   }
   render();
 }
@@ -335,7 +386,7 @@ function render() {
         <div class="top-row">
           <div>
             <div class="eyebrow"><span class="sync ${state.online ? "" : "off"}" id="sync"></span>${esc(fmt(new Date(), { weekday: "long", day: "numeric", month: "long" }))}</div>
-            <h1 class="title">${periodSummary()}</h1>
+            <h1 class="title">${state.view === "tasks" ? tasksSummary() : periodSummary()}</h1>
           </div>
           <button class="logo-btn" data-act="settings" aria-label="Ekip ve ayarlar"><img src="icons/icon-192.png" alt="" width="46" height="46"></button>
         </div>
@@ -343,8 +394,9 @@ function render() {
           <div class="seg" role="group">
             <button data-view="agenda" aria-pressed="${state.view === "agenda"}">Ajanda</button>
             <button data-view="month" aria-pressed="${state.view === "month"}">Ay</button>
+            <button data-view="tasks" aria-pressed="${state.view === "tasks"}">Teslimat${openTaskCount() ? ` <span class="seg-badge">${openTaskCount()}</span>` : ""}</button>
           </div>
-          <div class="chips">
+          <div class="chips" ${state.view === "tasks" ? "hidden" : ""}>
             <button class="chip" data-filter="all" aria-pressed="${state.filter === "all"}">Tümü</button>
             ${Object.entries(KINDS).map(([k, v]) => `<button class="chip k-${k}" data-filter="${k}" aria-pressed="${state.filter === k}"><span class="dot"></span>${v.label}</button>`).join("")}
           </div>
@@ -353,13 +405,127 @@ function render() {
       ${state.view === "agenda" ? renderWeek() : ""}
       <main class="content">
         ${promoCard()}
-        ${state.view === "agenda" ? renderAgenda() : renderMonth()}
+        ${state.view === "agenda" ? renderAgenda() : state.view === "month" ? renderMonth() : renderTasks()}
       </main>
       ${state.selected !== today() && state.view === "agenda" ? '<button class="today-pill" data-act="today">↺ Bugüne dön</button>' : ""}
-      <button class="fab" data-act="new">${ICON.plus}Ekle</button>
+      <button class="fab" data-act="${state.view === "tasks" ? "new-task" : "new"}">${ICON.plus}Ekle</button>
     </div>`;
   window.scrollTo(0, scrollY);
 }
+/* ───────────────────────── Teslimatlar ───────────────────────── */
+const openTaskCount = () => [...state.tasks.values()].filter((t) => !t.done).length;
+const dueDiff = (t) => (t.due_date ? Math.round((fromKey(t.due_date) - fromKey(today())) / 864e5) : null);
+
+function tasksSummary() {
+  const open = [...state.tasks.values()].filter((t) => !t.done);
+  if (!open.length) return "Tüm teslimatlar tamam ✨";
+  const late = open.filter((t) => dueDiff(t) !== null && dueDiff(t) < 0).length;
+  const todayN = open.filter((t) => dueDiff(t) === 0).length;
+  const parts = [`${open.length} açık teslimat`];
+  if (late) parts.push(`<em class="late">${late} gecikmiş</em>`);
+  else if (todayN) parts.push(`<em class="k-shoot">${todayN} bugün</em>`);
+  return parts.join(", ");
+}
+
+function dueChip(t) {
+  const d = dueDiff(t);
+  if (d === null) return "";
+  let txt, cls = "";
+  if (t.done) txt = fmt(fromKey(t.due_date), { day: "numeric", month: "short" });
+  else if (d < 0) { txt = `${-d} gün gecikti`; cls = "late"; }
+  else if (d === 0) { txt = "Bugün"; cls = "soon"; }
+  else if (d === 1) { txt = "Yarın"; cls = "soon"; }
+  else txt = fmt(fromKey(t.due_date), { day: "numeric", month: "short", weekday: "short" });
+  return `<span class="due ${cls}">${esc(txt)}</span>`;
+}
+
+function renderTask(t) {
+  const who = state.profiles.get(t.done ? t.done_by : t.created_by);
+  const meta = t.done
+    ? `${who ? esc(who.name) + " tamamladı" : "Tamamlandı"}${t.done_at ? " · " + fmt(new Date(t.done_at), { day: "numeric", month: "short" }) : ""}`
+    : t.notes ? esc(t.notes.split("\n")[0].slice(0, 70)) : "";
+  return `<div class="task ${t.done ? "is-done" : ""}" data-task="${t.id}">
+    <button class="tcheck" role="checkbox" aria-checked="${!!t.done}" data-tcheck="${t.id}" aria-label="Tamamlandı">${ICON.check}</button>
+    <button class="tbody" data-topen="${t.id}">
+      <span class="ttitle">${esc(t.title)}</span>
+      ${meta || t.due_date ? `<span class="tmeta">${dueChip(t)}${meta ? `<span>${meta}</span>` : ""}</span>` : ""}
+    </button>
+    ${who && state.profiles.size > 1 && !t.done ? `<span class="avatar sm" style="--c:${esc(who.color)}" title="${esc(who.name)}">${esc(initials(who.name))}</span>` : ""}
+  </div>`;
+}
+
+function renderTasks() {
+  const all = [...state.tasks.values()];
+  const open = all.filter((t) => !t.done).sort((a, b) =>
+    (a.due_date || "9999") < (b.due_date || "9999") ? -1 : (a.due_date || "9999") > (b.due_date || "9999") ? 1 : a.created_at < b.created_at ? -1 : 1);
+  const done = all.filter((t) => t.done).sort((a, b) => ((a.done_at || "") > (b.done_at || "") ? -1 : 1));
+  return `
+    <form class="quick-add" id="quick-task" autocomplete="off">
+      <span class="qa-plus">${ICON.plus}</span>
+      <input name="title" placeholder="Yeni teslimat: örn. Ali Bey kurgu teslimi" maxlength="200" enterkeyhint="done">
+      <button class="qa-btn" type="submit" aria-label="Ekle">Ekle</button>
+    </form>
+    ${open.length ? `<div class="task-list">${open.map(renderTask).join("")}</div>`
+      : `<div class="empty" style="padding-top:32px"><div class="empty-art">✅</div><h3>Açık teslimat yok</h3><p>Kurgu teslimi, dosya aktarımı, onaylar… Ekipçe takip edilecek her şeyi buraya yaz.</p></div>`}
+    ${done.length ? `
+      <button class="done-head" data-act="toggle-done" aria-expanded="${state.showDone}">
+        <span>Tamamlananlar · ${done.length}</span>${state.showDone ? ICON.chevL.replace("m15 18-6-6 6-6", "m6 9 6 6 6-6") : ICON.chevR}
+      </button>
+      ${state.showDone ? `<div class="task-list done-list">${done.map(renderTask).join("")}</div>` : ""}` : ""}`;
+}
+
+function openTask(t) {
+  const isNew = !t.id;
+  const creator = state.profiles.get(t.created_by);
+  openSheet(`
+    <div class="sheet-title"><h2>${isNew ? "Yeni teslimat" : "Teslimat"}</h2><button class="icon-btn" data-close aria-label="Kapat">${ICON.x}</button></div>
+    <form id="task-form" autocomplete="off">
+      <div class="group">
+        <div class="row"><input class="field title-input" name="title" placeholder="Örn. Ali Bey kurgu teslimi" value="${esc(t.title)}" maxlength="200" required></div>
+        <div class="row"><label for="t-due">Teslim</label><input class="field" id="t-due" type="date" name="due_date" value="${esc(t.due_date || "")}">${t.due_date ? '<button type="button" class="pill" data-clear-due>Temizle</button>' : ""}</div>
+      </div>
+      <div class="group"><div class="row"><textarea class="field" name="notes" placeholder="Notlar: dosya linki, format, kime teslim edilecek…">${esc(t.notes)}</textarea></div></div>
+      ${!isNew && creator ? `<p class="meta-line">${esc(creator.name)} ekledi · ${fmt(new Date(t.created_at), { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })}</p>` : ""}
+      <div class="actions">
+        <button class="btn btn-primary" type="submit">${isNew ? "Kaydet ve ekibe bildir" : "Kaydet"}</button>
+        ${!isNew ? `<button class="btn btn-soft" type="button" data-act="task-toggle">${t.done ? "↺ Geri al (açık yap)" : "✓ Tamamlandı olarak işaretle"}</button>
+        <button class="btn btn-danger" type="button" data-act="task-delete">Sil</button>` : ""}
+      </div>
+    </form>`, (body) => {
+    const form = $("#task-form", body);
+    if (isNew) setTimeout(() => form.title.focus(), 350);
+    body.addEventListener("click", async (e) => {
+      if (e.target.closest("[data-clear-due]")) { form.due_date.value = ""; e.target.remove(); return; }
+      const act = e.target.closest("[data-act]")?.dataset.act;
+      if (act === "task-toggle") { closeSheet(); toggleTask(t.id); }
+      if (act === "task-delete" && confirm(`“${t.title}” silinsin mi?`)) {
+        try { await backend.removeTask(t); closeSheet(); render(); } catch (err) { toast({ title: "Silinemedi", text: err.message }); }
+      }
+    });
+    form.addEventListener("submit", async (e) => {
+      e.preventDefault();
+      const fd = new FormData(form);
+      try {
+        await backend.saveTask({ ...t, title: fd.get("title").trim(), due_date: fd.get("due_date") || null, notes: fd.get("notes").trim() || null });
+        closeSheet(); render();
+        if (isNew) toast({ title: "📋 Teslimat eklendi", text: CLOUD ? "Ekip arkadaşına bildirim gitti." : fd.get("title").trim() });
+      } catch (err) { toast({ title: "Kaydedilemedi", text: err.message }); }
+    });
+  });
+}
+
+async function toggleTask(id) {
+  const t = state.tasks.get(id);
+  if (!t) return;
+  const updated = { ...t, done: !t.done, done_at: !t.done ? new Date().toISOString() : null, done_by: !t.done ? state.me.id : null };
+  const el = root.querySelector(`[data-task="${id}"]`);
+  if (el) { el.classList.add(updated.done ? "leaving" : "returning"); el.querySelector(".tcheck")?.setAttribute("aria-checked", String(updated.done)); }
+  if (updated.done && navigator.vibrate) navigator.vibrate(12);
+  await new Promise((r) => setTimeout(r, 380)); // tik animasyonu görünsün, sonra listede yer değiştirsin
+  state.tasks.set(id, updated); render();
+  try { await backend.saveTask(updated); } catch (err) { state.tasks.set(id, t); render(); toast({ title: "Kaydedilemedi", text: err.message }); }
+}
+
 function renderSync() { const el = $("#sync"); if (el) el.classList.toggle("off", !state.online); }
 
 function renderWeek() {
@@ -800,6 +966,19 @@ function renderAuth(mode = "login", msg = "", isErr = false) {
 }
 
 /* ───────────────────────── Olaylar ───────────────────────── */
+root.addEventListener("submit", async (e) => {
+  if (e.target.id !== "quick-task") return;
+  e.preventDefault();
+  const title = e.target.title.value.trim();
+  if (!title) return;
+  e.target.title.value = "";
+  try {
+    await backend.saveTask({ title, due_date: null, notes: null, done: false });
+    render();
+    $("#quick-task input")?.focus(); // art arda yazmaya devam edilebilsin
+  } catch (err) { toast({ title: "Kaydedilemedi", text: err.message }); }
+});
+
 root.addEventListener("click", async (e) => {
   const t = e.target;
   const toggle = t.closest("[data-toggle]");
@@ -812,6 +991,10 @@ root.addEventListener("click", async (e) => {
     try { await backend.save(updated); } catch (err) { state.events.set(ev.id, ev); render(); toast({ title: "Kaydedilemedi", text: err.message }); }
     return;
   }
+  const tcheck = t.closest("[data-tcheck]");
+  if (tcheck) return toggleTask(tcheck.dataset.tcheck);
+  const topen = t.closest("[data-topen]");
+  if (topen) return openTask(state.tasks.get(topen.dataset.topen));
   const open = t.closest("[data-open]");
   if (open) return openEvent(state.events.get(open.dataset.open));
   const day = t.closest("[data-day]");
@@ -837,6 +1020,8 @@ root.addEventListener("click", async (e) => {
   if (!act) return;
   switch (act.dataset.act) {
     case "new": return newEvent(act.dataset.date || state.selected);
+    case "new-task": return openTask({ title: "", due_date: null, notes: "", done: false });
+    case "toggle-done": state.showDone = !state.showDone; store.set("baret.showDone", state.showDone); return render();
     case "settings": return openSettings();
     case "today": state.selected = today(); return render();
     case "push-on": if (await subscribePush()) render(); return;
@@ -872,7 +1057,8 @@ function handleUrl(href = location.href) {
   if (id && state.events.get(id)) {
     const ev = state.events.get(id);
     state.selected = dayKey(new Date(ev.starts_at)); render(); openEvent(ev);
-  } else if (p.get("new")) newEvent();
+  } else if (p.get("view") === "tasks") { state.view = "tasks"; render(); history.replaceState(null, "", location.pathname); }
+  else if (p.get("new")) newEvent();
 }
 
 /* ───────────────────────── Örnek veri (deneme modu) ───────────────────────── */
@@ -887,6 +1073,17 @@ function seed() {
     { ...base, id: crypto.randomUUID(), kind: "shoot", title: "Klip çekimi – dış mekan", starts_at: at(3, 0), ends_at: at(4, 23, 59), all_day: true, location: "Şile sahili", notes: "Hava durumu yedeği: 6 gün sonrası", remind_minutes: 1440, created_by: "demo-2", updated_by: "demo-2" },
     { ...base, id: crypto.randomUUID(), kind: "meeting", title: "Müşteriyle ofline izleme", starts_at: at(5, 14), ends_at: at(5, 15), all_day: false, location: "Online · Meet", notes: null, remind_minutes: 60, created_by: "demo", updated_by: "demo" },
     { ...base, id: crypto.randomUUID(), kind: "reminder", title: "Oyuncu sözleşmelerini topla", starts_at: at(2, 10), ends_at: null, all_day: false, location: null, notes: null, remind_minutes: 0, created_by: "demo-2", updated_by: "demo-2" },
+  ];
+}
+
+function seedTasks() {
+  const now = Date.now(), iso = (h) => new Date(now - h * 36e5).toISOString();
+  const day = (n) => dayKey(addDays(new Date(), n));
+  return [
+    { id: crypto.randomUUID(), title: "Ali Bey kurgu teslimi", due_date: day(2), notes: "Final kurgu + altyazılı versiyon", done: false, created_by: "demo-2", updated_by: "demo-2", created_at: iso(30), updated_at: iso(30) },
+    { id: crypto.randomUUID(), title: "Ham görüntüleri müşteriye aktar", due_date: day(0), notes: "WeTransfer ile, 4K ProRes", done: false, created_by: "demo", updated_by: "demo", created_at: iso(20), updated_at: iso(20) },
+    { id: crypto.randomUUID(), title: "Müzik lisansı onayı", due_date: day(-1), notes: null, done: false, created_by: "demo", updated_by: "demo", created_at: iso(48), updated_at: iso(48) },
+    { id: crypto.randomUUID(), title: "Renk düzenleme revizyonları", due_date: null, notes: null, done: true, done_at: iso(5), done_by: "demo-2", created_by: "demo", updated_by: "demo-2", created_at: iso(70), updated_at: iso(5) },
   ];
 }
 

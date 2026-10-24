@@ -1,5 +1,6 @@
 // Baret Ajanda – "notify" fonksiyonu
-// Bir ekip üyesi girdi ekleyince/değiştirince/silince diğer üyelerin telefonlarına push bildirimi gönderir.
+// Bir ekip üyesi girdi ekleyince/değiştirince/silince ya da teslimat ekleyip tamamlayınca
+// diğer üyelerin telefonlarına push bildirimi gönderir.
 // Gerekli secrets: VAPID_PUBLIC_KEY, VAPID_PRIVATE_KEY, VAPID_SUBJECT (örn. mailto:siz@ornek.com)
 import { createClient } from "npm:@supabase/supabase-js@2.45.4";
 import webpush from "npm:web-push@3.6.7";
@@ -28,6 +29,32 @@ function whenText(ev: { starts_at: string; all_day: boolean }) {
   return `${day} ${time}`;
 }
 
+// Gönderen hariç tüm ekip üyelerinin telefonlarına push gönderir
+// deno-lint-ignore no-explicit-any
+async function pushToOthers(admin: any, senderId: string, message: Record<string, unknown>) {
+  webpush.setVapidDetails(
+    Deno.env.get("VAPID_SUBJECT") ?? "mailto:admin@example.com",
+    Deno.env.get("VAPID_PUBLIC_KEY")!,
+    Deno.env.get("VAPID_PRIVATE_KEY")!,
+  );
+  const payload = JSON.stringify(message);
+  const { data: subs } = await admin.from("push_subscriptions").select("*").neq("user_id", senderId);
+  let sent = 0;
+  // deno-lint-ignore no-explicit-any
+  await Promise.all((subs ?? []).map(async (s: any) => {
+    try {
+      await webpush.sendNotification({ endpoint: s.endpoint, keys: { p256dh: s.p256dh, auth: s.auth } }, payload, { TTL: 60 * 60 * 24 });
+      sent++;
+    } catch (err) {
+      // Telefon aboneliği iptal ettiyse kaydı temizle
+      const code = (err as { statusCode?: number }).statusCode;
+      if (code === 404 || code === 410) await admin.from("push_subscriptions").delete().eq("endpoint", s.endpoint);
+      else console.error("push failed", code, err);
+    }
+  }));
+  return sent;
+}
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: cors });
 
@@ -36,7 +63,24 @@ Deno.serve(async (req) => {
   const { data: { user } } = await admin.auth.getUser(token);
   if (!user) return json({ error: "unauthorized" }, 401);
 
-  const { event_id, action = "created", snapshot } = await req.json().catch(() => ({}));
+  const { event_id, action = "created", snapshot, table, task_id } = await req.json().catch(() => ({}));
+
+  // Teslimat listesi: yeni eklendi / tamamlandı
+  if (table === "tasks") {
+    const { data: task } = await admin.from("tasks").select("*").eq("id", task_id).single();
+    if (!task) return json({ error: "task not found" }, 404);
+    const { data: actor } = await admin.from("profiles").select("name").eq("id", user.id).single();
+    const who = actor?.name ?? "Bir ekip üyesi";
+    const due = task.due_date
+      ? new Intl.DateTimeFormat("tr-TR", { day: "numeric", month: "short", weekday: "short" }).format(new Date(task.due_date + "T12:00:00Z"))
+      : null;
+    return json({ sent: await pushToOthers(admin, user.id, {
+      title: action === "done" ? `✅ ${who} tamamladı` : `📋 ${who} yeni teslimat ekledi`,
+      body: [task.title, action === "done" ? null : due && `Teslim: ${due}`].filter(Boolean).join(" · "),
+      tag: `task-${task.id}`,
+      url: "./?view=tasks",
+    }) });
+  }
 
   let ev = snapshot;
   if (action !== "deleted") {
@@ -58,25 +102,5 @@ Deno.serve(async (req) => {
     url: action === "deleted" ? "./" : `./?event=${ev.id}`,
   });
 
-  webpush.setVapidDetails(
-    Deno.env.get("VAPID_SUBJECT") ?? "mailto:admin@example.com",
-    Deno.env.get("VAPID_PUBLIC_KEY")!,
-    Deno.env.get("VAPID_PRIVATE_KEY")!,
-  );
-
-  const { data: subs } = await admin.from("push_subscriptions").select("*").neq("user_id", user.id);
-  let sent = 0;
-  await Promise.all((subs ?? []).map(async (s) => {
-    try {
-      await webpush.sendNotification({ endpoint: s.endpoint, keys: { p256dh: s.p256dh, auth: s.auth } }, payload, { TTL: 60 * 60 * 24 });
-      sent++;
-    } catch (err) {
-      // Telefon aboneliği iptal ettiyse kaydı temizle
-      const code = (err as { statusCode?: number }).statusCode;
-      if (code === 404 || code === 410) await admin.from("push_subscriptions").delete().eq("endpoint", s.endpoint);
-      else console.error("push failed", code, err);
-    }
-  }));
-
-  return json({ sent });
+  return json({ sent: await pushToOthers(admin, user.id, JSON.parse(payload)) });
 });

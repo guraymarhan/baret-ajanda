@@ -93,6 +93,11 @@ async function morningDigest(admin: any) {
     admin.from("events").select("*").lt("starts_at", to.toISOString()).gte("starts_at", new Date(from.getTime() - 31 * 86400_000).toISOString()),
     admin.from("push_subscriptions").select("*"),
   ]);
+  // Bugün teslim edilecek ya da gecikmiş açık teslimatlar
+  const todayKey = new Date(from.getTime() + 3 * 3600_000).toISOString().slice(0, 10);
+  const { data: dueTasks } = await admin.from("tasks").select("id,due_date").eq("done", false).lte("due_date", todayKey);
+  const lateN = (dueTasks ?? []).filter((t: Row) => t.due_date < todayKey).length;
+  const todayN = (dueTasks ?? []).length - lateN;
   // Bugüne denk gelen girdiler (çok günlü kiralama/çekimler dahil)
   const todays = ((events ?? []) as Row[]).filter((e) => {
     const s = new Date(e.starts_at), end = e.ends_at ? new Date(e.ends_at) : s;
@@ -103,6 +108,7 @@ async function morningDigest(admin: any) {
   for (const s of (subs ?? []) as Row[]) {
     const mine = todays.filter((e) => e.visibility !== "private" || e.created_by === s.user_id);
     const lines = [motivation];
+    const taskLine = [todayN && `📋 ${todayN} teslimat bugün`, lateN && `${lateN} gecikmiş teslimat`].filter(Boolean).join(" · ");
     if (mine.length) {
       const counts = ["rental", "shoot", "meeting", "reminder"]
         .map((k) => [k, mine.filter((e) => e.kind === k).length] as const)
@@ -117,6 +123,7 @@ async function morningDigest(admin: any) {
         lines.push(`İlk: ${time} ${first.title}`);
       }
     }
+    if (taskLine) lines.push(taskLine);
     const payload = JSON.stringify({ title: "Günaydın 🪖", body: lines.join("\n"), tag: "morning", url: "./" });
     try {
       await webpush.sendNotification({ endpoint: s.endpoint, keys: { p256dh: s.p256dh, auth: s.auth } }, payload, { TTL: 3 * 3600 });
