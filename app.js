@@ -394,7 +394,7 @@ function render() {
           <div class="seg" role="group">
             <button data-view="agenda" aria-pressed="${state.view === "agenda"}">Ajanda</button>
             <button data-view="month" aria-pressed="${state.view === "month"}">Ay</button>
-            <button data-view="tasks" aria-pressed="${state.view === "tasks"}">Teslimat${openTaskCount() ? ` <span class="seg-badge">${openTaskCount()}</span>` : ""}</button>
+            <button data-view="tasks" aria-pressed="${state.view === "tasks"}" aria-label="Teslimatlar">!${openTaskCount() ? ` <span class="seg-badge">${openTaskCount()}</span>` : ""}</button>
           </div>
           <div class="chips" ${state.view === "tasks" ? "hidden" : ""}>
             <button class="chip" data-filter="all" aria-pressed="${state.filter === "all"}">Tümü</button>
