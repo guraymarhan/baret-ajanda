@@ -420,7 +420,7 @@ function openSheet(html, onMount) {
   sheetBody.innerHTML = html;
   sheetBody.scrollTop = 0;
   layer.hidden = false;
-  requestAnimationFrame(() => requestAnimationFrame(() => layer.classList.add("open")));
+  requestAnimationFrame(() => requestAnimationFrame(() => { sheetBody.scrollTop = 0; layer.classList.add("open"); }));
   document.body.style.overflow = "hidden";
   onMount?.(sheetBody);
 }
