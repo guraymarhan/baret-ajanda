@@ -74,11 +74,14 @@ let sb = null;
 let backend;
 
 const demoBackend = {
-  KEY: "baret.demo.events.v3",
+  KEY: "baret.demo.events", // bu anahtar değişmemeli, değişirse cihazdaki veriler kaybolur
   async init() {
     state.me = store.get("baret.demo.me", { id: "demo", name: "Sen", color: "#FF5A3C" });
     state.profiles.set(state.me.id, state.me);
     state.profiles.set("demo-2", { id: "demo-2", name: "Ekip Arkadaşı", color: "#4F5BFF" });
+    // Eski sürümlerin anahtarından taşı (bir kereye mahsus)
+    const legacy = store.get("baret.demo.events.v3", null);
+    if (legacy) { store.set(this.KEY, legacy); try { localStorage.removeItem("baret.demo.events.v3"); localStorage.removeItem("baret.demo.events.v2"); } catch { /* yok */ } }
     let list = store.get(this.KEY, null);
     if (!list) { list = seed(); store.set(this.KEY, list); }
     list.forEach((e) => state.events.set(e.id, e));
@@ -670,7 +673,12 @@ async function openSettings() {
       if (name === state.me.name && color === state.me.color) return;
       try { await backend.updateProfile({ name, color }); render(); } catch (err) { toast({ title: "Kaydedilemedi", text: err.message }); }
     };
-    nameInput.addEventListener("input", () => { $("#pf-avatar", body).textContent = initials(nameInput.value); });
+    let nameTimer;
+    nameInput.addEventListener("input", () => {
+      $("#pf-avatar", body).textContent = initials(nameInput.value);
+      clearTimeout(nameTimer);
+      nameTimer = setTimeout(saveProfile, 600); // yazarken kaydet, panel kapanınca kaybolmasın
+    });
     nameInput.addEventListener("change", saveProfile);
     body.addEventListener("click", async (e) => {
       const sw = e.target.closest("[data-color]");
@@ -841,6 +849,7 @@ function seed() {
 async function boot() {
   if ("serviceWorker" in navigator) {
     navigator.serviceWorker.register("sw.js").catch((e) => console.warn("SW", e));
+    navigator.storage?.persist?.().catch(() => {}); // tarayıcıdan verileri silmemesini iste
     navigator.serviceWorker.addEventListener("message", (e) => { if (e.data?.type === "open") handleUrl(e.data.url); });
   }
   backend = CLOUD ? cloudBackend : demoBackend;
