@@ -53,13 +53,13 @@ Sol menü → **Edge Functions** → **Deploy a new function** → **Via Editor*
 
 | Fonksiyon adı | Kod dosyası | "Verify JWT" ayarı |
 |---|---|---|
-| `notify` | [`supabase/functions/notify/index.ts`](supabase/functions/notify/index.ts) | **Açık** (varsayılan) |
+| `notify` | [`supabase/functions/notify/index.ts`](supabase/functions/notify/index.ts) | **Kapalı** |
 | `ical` | [`supabase/functions/ical/index.ts`](supabase/functions/ical/index.ts) | **Kapalı** |
 | `reminders` | [`supabase/functions/reminders/index.ts`](supabase/functions/reminders/index.ts) | **Kapalı** |
 
-"Verify JWT" ayarı: fonksiyona tıkla → **Details** (ya da Settings) sekmesi → JWT doğrulama anahtarını kapat → **Save**. `ical` takvim uygulamalarının, `reminders` zamanlayıcının çağırabilmesi için kapalı olmalı; ikisi de kendi gizli anahtarıyla korunuyor.
+"Verify JWT" ayarı: fonksiyona tıkla → **Details** (ya da Settings) sekmesi → JWT doğrulama anahtarını kapat → **Save**. Üçü de kapalı olmalı: `notify` girişi kendi kodunda kontrol ediyor (yeni Supabase projelerinde açık kalırsa bildirim takılabiliyor), `ical` takvim uygulamalarının, `reminders` zamanlayıcının çağırabilmesi için kapalı; ikisi de kendi gizli anahtarıyla korunuyor.
 
-> Terminal kullanmayı biliyorsan alternatif: `npx supabase login`, `npx supabase link`, sonra `npx supabase functions deploy notify` ve `npx supabase functions deploy ical --no-verify-jwt`, `npx supabase functions deploy reminders --no-verify-jwt`.
+> Terminal kullanmayı biliyorsan alternatif: `npx supabase login`, `npx supabase link`, sonra `npx supabase functions deploy notify --no-verify-jwt`, `npx supabase functions deploy ical --no-verify-jwt`, `npx supabase functions deploy reminders --no-verify-jwt`.
 
 ## Adım 7 – Hatırlatıcı zamanlayıcısını aç
 
