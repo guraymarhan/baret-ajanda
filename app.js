@@ -860,7 +860,7 @@ async function openSettings() {
       ${icalUrl ? `
       <div class="set-row"><span class="emo">📅</span><div class="txt"><b>Apple Takvim'e abone ol</b><small>Tüm ajanda iPhone Takvimi'nde görünür ve kendiliğinden güncellenir. Düzenlemeleri burada yap.</small></div></div>
       <div class="set-row" style="gap:8px"><a class="btn btn-brand" href="${esc(icalUrl)}" style="text-decoration:none">Takvime ekle</a><button class="btn btn-soft btn-sm" data-copy="${esc(icalUrl.replace("webcal://", "https://"))}" style="min-height:54px">Linki kopyala</button></div>
-      <ol class="steps"><li>“Takvime ekle”ye dokun, açılan pencerede <b>Abone Ol</b> de.</li><li>Güncelleme sıklığı için: Ayarlar → Takvim → Hesaplar → Abone Olunan Takvimler → <b>Her 15 dakikada</b>.</li><li>Google Takvim için kopyaladığın linki “URL ile ekle”ye yapıştır.</li></ol>` : `
+      <ol class="steps"><li>“Takvime ekle”ye dokun, açılan pencerede <b>Abone Ol</b> de.</li><li>Pencere açılmazsa: <b>Linki kopyala</b> → iPhone Ayarlar → Takvim → Hesaplar → Hesap Ekle → Diğer → <b>Abone Olunan Takvim Ekle</b> → yapıştır → Kaydet.</li><li>Güncelleme sıklığı için: Ayarlar → Takvim → Hesaplar → Abone Olunan Takvimler → <b>Her 15 dakikada</b>.</li><li>Google Takvim için kopyaladığın linki “URL ile ekle”ye yapıştır.</li></ol>` : `
       <div class="set-row"><span class="emo">📅</span><div class="txt"><b>Takvim aboneliği</b><small>Supabase bağlandığında burada kişisel takvim linkin çıkar.</small></div></div>`}
     </div>
 
