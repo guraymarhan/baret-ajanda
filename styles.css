@@ -81,6 +81,7 @@ button { cursor: pointer; border: 0; background: none; padding: 0; }
 .auth-tabs button { padding: 10px; border-radius: 11px; font-weight: 600; color: var(--ink-2); transition: .2s; }
 .auth-tabs button[aria-pressed="true"] { background: var(--surface); color: var(--ink); box-shadow: var(--shadow); }
 .auth form { display: grid; gap: 12px; }
+.auth-link { justify-self: center; padding: 8px; font-size: 14px; font-weight: 600; color: var(--ink-2); }
 .auth .msg { font-size: 14px; padding: 12px 14px; border-radius: 12px; background: var(--surface-2); color: var(--ink-2); }
 .auth .msg.err { background: color-mix(in srgb, var(--danger) 12%, transparent); color: var(--danger); }
 

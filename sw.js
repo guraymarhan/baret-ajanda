@@ -1,5 +1,5 @@
 // Baret Ajanda – service worker: çevrimdışı açılış + push bildirimleri
-const CACHE = "baret-v12";
+const CACHE = "baret-v13";
 const SHELL = ["./", "index.html", "styles.css", "app.js", "config.js", "manifest.webmanifest",
   "icons/icon-192.png", "icons/icon-512.png", "icons/apple-touch-icon.png"];
 

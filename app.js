@@ -120,9 +120,11 @@ const demoBackend = {
 const cloudBackend = {
   async init() {
     const { createClient } = await import("https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/+esm");
+    const recovering = /type=recovery/.test(location.hash);
     sb = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, { auth: { persistSession: true, autoRefreshToken: true } });
     const { data: { session } } = await sb.auth.getSession();
     if (!session) return false;
+    if (recovering) { renderAuth("newpass"); return "recovery"; }
     await this.loadAll(session.user);
     this.subscribe();
     document.addEventListener("visibilitychange", () => { if (!document.hidden) this.refresh(); });
@@ -923,6 +925,7 @@ function toast({ title, text = "", who = null, id = null }) {
 
 /* ───────────────────────── Giriş ekranı ───────────────────────── */
 function renderAuth(mode = "login", msg = "", isErr = false) {
+  if (mode === "forgot" || mode === "newpass") return renderPasswordFlow(mode, msg, isErr);
   root.innerHTML = `
     <div class="auth">
       <img class="auth-logo" src="icons/icon-192.png" alt="">
@@ -940,6 +943,7 @@ function renderAuth(mode = "login", msg = "", isErr = false) {
         </div>
         ${msg ? `<div class="msg ${isErr ? "err" : ""}">${esc(msg)}</div>` : ""}
         <button class="btn btn-brand" type="submit">${mode === "signup" ? "Hesap oluştur" : "Giriş yap"}</button>
+        ${mode === "login" ? '<button class="auth-link" type="button" data-mode="forgot">Şifremi unuttum</button>' : ""}
       </form>
     </div>`;
   root.querySelectorAll("[data-mode]").forEach((b) => (b.onclick = () => renderAuth(b.dataset.mode)));
@@ -962,6 +966,39 @@ function renderAuth(mode = "login", msg = "", isErr = false) {
       return renderAuth(mode, tr, true);
     }
     location.reload();
+  };
+}
+
+// Şifre sıfırlama: "forgot" e-postaya link gönderir, linkten dönünce "newpass" yeni şifreyi kaydeder
+function renderPasswordFlow(mode, msg = "", isErr = false) {
+  const forgot = mode === "forgot";
+  root.innerHTML = `
+    <div class="auth">
+      <img class="auth-logo" src="icons/icon-192.png" alt="">
+      <h1>${forgot ? "Şifremi unuttum" : "Yeni şifre"}</h1>
+      <p class="lead">${forgot ? "E-postanı yaz, şifre yenileme linki gönderelim." : "Yeni şifreni belirle, sonra uygulamaya devam et."}</p>
+      <form id="auth-form">
+        <div class="group" style="margin:0"><div class="row">${forgot
+          ? '<input class="field" name="email" type="email" placeholder="E-posta" required autocomplete="email">'
+          : '<input class="field" name="password" type="password" placeholder="Yeni şifre (en az 6 karakter)" required minlength="6" autocomplete="new-password">'}</div></div>
+        ${msg ? `<div class="msg ${isErr ? "err" : ""}">${esc(msg)}</div>` : ""}
+        <button class="btn btn-brand" type="submit">${forgot ? "Link gönder" : "Şifreyi kaydet"}</button>
+        ${forgot ? '<button class="auth-link" type="button" data-mode="login">Girişe dön</button>' : ""}
+      </form>
+    </div>`;
+  root.querySelectorAll("[data-mode]").forEach((b) => (b.onclick = () => renderAuth(b.dataset.mode)));
+  $("#auth-form").onsubmit = async (e) => {
+    e.preventDefault();
+    const fd = new FormData(e.target);
+    e.target.querySelector("button[type=submit]").disabled = true;
+    if (forgot) {
+      const { error } = await sb.auth.resetPasswordForEmail(fd.get("email").trim(), { redirectTo: location.href.split(/[?#]/)[0] });
+      if (error) return renderPasswordFlow(mode, /rate limit/i.test(error.message) ? "Çok sık denendi, birkaç dakika sonra tekrar dene." : error.message, true);
+      return renderAuth("login", "Link gönderildi. E-postandaki linke dokun, açılan sayfada yeni şifreni belirle.");
+    }
+    const { error } = await sb.auth.updateUser({ password: fd.get("password") });
+    if (error) return renderPasswordFlow(mode, error.message, true);
+    location.replace(location.href.split(/[?#]/)[0]);
   };
 }
 
@@ -1097,6 +1134,7 @@ async function boot() {
   backend = CLOUD ? cloudBackend : demoBackend;
   try {
     const ok = await backend.init();
+    if (ok === "recovery") return;
     if (!ok) return renderAuth();
   } catch (err) {
     console.error(err);
