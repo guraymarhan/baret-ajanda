@@ -19,7 +19,8 @@ select cron.schedule(
   select net.http_post(
     url     := 'https://PROJE_REF.supabase.co/functions/v1/reminders',
     headers := jsonb_build_object('Content-Type', 'application/json', 'x-cron-secret', 'CRON_SECRET'),
-    body    := '{}'::jsonb
+    body    := '{}'::jsonb,
+    timeout_milliseconds := 30000
   );
   $$
 );
@@ -35,7 +36,8 @@ select cron.schedule(
   select net.http_post(
     url     := 'https://PROJE_REF.supabase.co/functions/v1/reminders',
     headers := jsonb_build_object('Content-Type', 'application/json', 'x-cron-secret', 'CRON_SECRET'),
-    body    := '{"mode":"morning"}'::jsonb
+    body    := '{"mode":"morning"}'::jsonb,
+    timeout_milliseconds := 30000
   );
   $$
 );

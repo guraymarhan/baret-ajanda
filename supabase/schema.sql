@@ -113,6 +113,18 @@ create table if not exists public.push_subscriptions (
   auth        text not null,
   created_at  timestamptz not null default now()
 );
+alter table public.push_subscriptions add column if not exists last_seen_at timestamptz;
+
+-- Bildirim gönderim kaydı (sadece sunucu yazar; kontrol için Table Editor → push_log)
+create table if not exists public.push_log (
+  id      bigint generated always as identity primary key,
+  at      timestamptz not null default now(),
+  kind    text not null,
+  sent    int not null default 0,
+  failed  int not null default 0,
+  detail  text
+);
+alter table public.push_log enable row level security;
 
 -- ───────────────────────── Güvenlik (RLS) ─────────────────────────
 -- Giriş yapmış herkes ekibin parçasıdır: ekip girdilerini görür ve düzenler.

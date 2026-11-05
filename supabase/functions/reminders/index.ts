@@ -105,6 +105,7 @@ async function morningDigest(admin: any) {
   });
 
   let sent = 0;
+  const fails: string[] = [];
   for (const s of (subs ?? []) as Row[]) {
     const mine = todays.filter((e) => e.visibility !== "private" || e.created_by === s.user_id);
     const lines = [motivation];
@@ -126,13 +127,17 @@ async function morningDigest(admin: any) {
     if (taskLine) lines.push(taskLine);
     const payload = JSON.stringify({ title: "Günaydın 🪖", body: lines.join("\n"), tag: "morning", url: "./" });
     try {
-      await webpush.sendNotification({ endpoint: s.endpoint, keys: { p256dh: s.p256dh, auth: s.auth } }, payload, { TTL: 3 * 3600 });
+      await webpush.sendNotification({ endpoint: s.endpoint, keys: { p256dh: s.p256dh, auth: s.auth } }, payload, { TTL: 3 * 3600, urgency: "high" });
       sent++;
     } catch (err) {
       const code = (err as { statusCode?: number }).statusCode;
       if (code === 404 || code === 410) await admin.from("push_subscriptions").delete().eq("endpoint", s.endpoint);
+      else console.error("push failed", code, err);
+      fails.push(`${s.user_id.slice(0, 8)}:${code ?? (err as Error).message}`);
     }
   }
+  // Kontrol için kayıt: Supabase → Table Editor → push_log
+  await admin.from("push_log").insert({ kind: "morning", sent, failed: fails.length, detail: fails.join(", ") || null });
   return Response.json({ morning: true, sent, today: todays.length });
 }
 
@@ -182,6 +187,7 @@ Deno.serve(async (req) => {
   const { data: subs } = await admin.from("push_subscriptions").select("*");
 
   for (const ev of due) {
+    const fails: string[] = [];
     const d = new Date(ev.starts_at);
     const time = ev.all_day
       ? new Intl.DateTimeFormat("tr-TR", { timeZone: TZ, weekday: "long", day: "numeric", month: "long" }).format(d)
@@ -196,12 +202,15 @@ Deno.serve(async (req) => {
     const targets = (subs ?? []).filter((s) => ev.visibility !== "private" || s.user_id === ev.created_by);
     await Promise.all(targets.map(async (s) => {
       try {
-        await webpush.sendNotification({ endpoint: s.endpoint, keys: { p256dh: s.p256dh, auth: s.auth } }, payload, { TTL: 60 * 60 });
+        await webpush.sendNotification({ endpoint: s.endpoint, keys: { p256dh: s.p256dh, auth: s.auth } }, payload, { TTL: 60 * 60, urgency: "high" });
       } catch (err) {
         const code = (err as { statusCode?: number }).statusCode;
         if (code === 404 || code === 410) await admin.from("push_subscriptions").delete().eq("endpoint", s.endpoint);
+        else console.error("push failed", code, err);
+        fails.push(`${s.user_id.slice(0, 8)}:${code ?? (err as Error).message}`);
       }
     }));
+    await admin.from("push_log").insert({ kind: "reminder", sent: targets.length - fails.length, failed: fails.length, detail: [ev.title, ...fails].join(", ") });
     await admin.from("events").update({ reminded: true }).eq("id", ev.id);
   }
 

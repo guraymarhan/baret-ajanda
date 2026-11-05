@@ -267,6 +267,18 @@ async function subscribePush() {
   toast({ title: "🔔 Bildirimler açık", text: "Ekip yeni bir şey eklediğinde haber vereceğiz." });
   return true;
 }
+// Her açılışta telefonun bildirim aboneliğini sunucuya yeniden yaz. iPhone aboneliği zaman zaman
+// yeniler ya da sunucu geçersiz kaydı siler; bu olmazsa kişi fark etmeden bildirim almayı bırakır.
+async function syncPush() {
+  if (!CLOUD || !pushSupported || !VAPID_PUBLIC_KEY || Notification.permission !== "granted") return;
+  try {
+    const reg = await navigator.serviceWorker.ready;
+    let sub = await reg.pushManager.getSubscription();
+    if (!sub) sub = await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: b64ToBytes(VAPID_PUBLIC_KEY) });
+    const j = sub.toJSON();
+    await sb.from("push_subscriptions").upsert({ endpoint: j.endpoint, p256dh: j.keys.p256dh, auth: j.keys.auth, user_id: state.me.id, last_seen_at: new Date().toISOString() });
+  } catch (err) { console.warn("push sync", err); }
+}
 async function unsubscribePush() {
   const reg = await navigator.serviceWorker.getRegistration();
   const sub = await reg?.pushManager.getSubscription();
@@ -1143,6 +1155,8 @@ async function boot() {
   }
   render();
   handleUrl();
+  syncPush();
+  document.addEventListener("visibilitychange", () => { if (!document.hidden) syncPush(); });
   // Gün değişince başlıkları tazele
   setInterval(() => { if (!document.hidden && layer.hidden) render(); }, 60_000);
 }

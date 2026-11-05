@@ -40,18 +40,21 @@ async function pushToOthers(admin: any, senderId: string, message: Record<string
   const payload = JSON.stringify(message);
   const { data: subs } = await admin.from("push_subscriptions").select("*").neq("user_id", senderId);
   let sent = 0;
+  const fails: string[] = [];
   // deno-lint-ignore no-explicit-any
   await Promise.all((subs ?? []).map(async (s: any) => {
     try {
-      await webpush.sendNotification({ endpoint: s.endpoint, keys: { p256dh: s.p256dh, auth: s.auth } }, payload, { TTL: 60 * 60 * 24 });
+      await webpush.sendNotification({ endpoint: s.endpoint, keys: { p256dh: s.p256dh, auth: s.auth } }, payload, { TTL: 60 * 60 * 24, urgency: "high" });
       sent++;
     } catch (err) {
       // Telefon aboneliği iptal ettiyse kaydı temizle
       const code = (err as { statusCode?: number }).statusCode;
       if (code === 404 || code === 410) await admin.from("push_subscriptions").delete().eq("endpoint", s.endpoint);
       else console.error("push failed", code, err);
+      fails.push(`${s.user_id.slice(0, 8)}:${code ?? (err as Error).message}`);
     }
   }));
+  await admin.from("push_log").insert({ kind: "notify", sent, failed: fails.length, detail: [message.title, ...fails].join(", ") });
   return sent;
 }
 
