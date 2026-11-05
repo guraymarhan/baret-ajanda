@@ -866,6 +866,12 @@ async function openSettings() {
       <div class="set-row"><span class="avatar" style="--c:${esc(p.color)};border:0">${esc(initials(p.name))}</span><div class="txt"><b>${esc(p.name)}${p.id === state.me.id ? ' <small style="display:inline;color:var(--ink-3)">· sen</small>' : ""}</b></div></div>`).join("")}
     </div>` : ""}
 
+    ${CLOUD ? `<div class="section-label">Ekibe duyuru</div>
+    <div class="group"><form class="row broadcast" id="broadcast-form" style="gap:8px">
+      <input class="field" name="text" placeholder="Örn. Yarın set 08:00 🌙" maxlength="300" required enterkeyhint="send">
+      <button class="btn btn-brand btn-sm" type="submit">Gönder</button>
+    </form></div>` : ""}
+
     <div class="section-label">Bildirimler</div>
     <div class="group"><div class="set-row"><span class="emo">${pushRow[0]}</span><div class="txt"><b>${pushRow[1]}</b><small>${pushRow[2]}</small></div>${pushRow[3]}</div></div>
 
@@ -905,6 +911,16 @@ async function openSettings() {
       nameTimer = setTimeout(saveProfile, 600); // yazarken kaydet, panel kapanınca kaybolmasın
     });
     nameInput.addEventListener("change", saveProfile);
+    $("#broadcast-form", body)?.addEventListener("submit", async (e) => {
+      e.preventDefault();
+      const input = e.target.text, btn = e.target.querySelector("button");
+      btn.disabled = true;
+      const { data, error } = await sb.functions.invoke("notify", { body: { table: "broadcast", text: input.value } });
+      btn.disabled = false;
+      if (error) return toast({ title: "Gönderilemedi", text: error.message });
+      input.value = "";
+      toast({ title: "📣 Duyuru gönderildi", text: `${data?.sent ?? 0} telefona gitti.` });
+    });
     body.addEventListener("click", async (e) => {
       const sw = e.target.closest("[data-color]");
       if (sw) {

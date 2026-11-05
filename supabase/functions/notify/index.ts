@@ -31,14 +31,15 @@ function whenText(ev: { starts_at: string; all_day: boolean }) {
 
 // Gönderen hariç tüm ekip üyelerinin telefonlarına push gönderir
 // deno-lint-ignore no-explicit-any
-async function pushToOthers(admin: any, senderId: string, message: Record<string, unknown>) {
+async function pushToOthers(admin: any, senderId: string | null, message: Record<string, unknown>) {
   webpush.setVapidDetails(
     Deno.env.get("VAPID_SUBJECT") ?? "mailto:admin@example.com",
     Deno.env.get("VAPID_PUBLIC_KEY")!,
     Deno.env.get("VAPID_PRIVATE_KEY")!,
   );
   const payload = JSON.stringify(message);
-  const { data: subs } = await admin.from("push_subscriptions").select("*").neq("user_id", senderId);
+  const q = admin.from("push_subscriptions").select("*");
+  const { data: subs } = senderId ? await q.neq("user_id", senderId) : await q;
   let sent = 0;
   const fails: string[] = [];
   // deno-lint-ignore no-explicit-any
@@ -66,7 +67,20 @@ Deno.serve(async (req) => {
   const { data: { user } } = await admin.auth.getUser(token);
   if (!user) return json({ error: "unauthorized" }, 401);
 
-  const { event_id, action = "created", snapshot, table, task_id } = await req.json().catch(() => ({}));
+  const { event_id, action = "created", snapshot, table, task_id, text } = await req.json().catch(() => ({}));
+
+  // Ekibe duyuru: uygulamadaki Ekip sayfasından, gönderen dahil herkese
+  if (table === "broadcast") {
+    const msg = String(text ?? "").trim().slice(0, 300);
+    if (!msg) return json({ error: "empty" }, 400);
+    const { data: actor } = await admin.from("profiles").select("name").eq("id", user.id).single();
+    return json({ sent: await pushToOthers(admin, null, {
+      title: `📣 ${actor?.name ?? "Ekip"}`,
+      body: msg,
+      tag: `broadcast-${Date.now()}`,
+      url: "./",
+    }) });
+  }
 
   // Teslimat listesi: yeni eklendi / tamamlandı
   if (table === "tasks") {
