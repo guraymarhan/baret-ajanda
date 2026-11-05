@@ -154,7 +154,8 @@ Deno.serve(async (req) => {
   }
 
   const admin = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
-  const { mode } = await req.json().catch(() => ({}));
+  const input = await req.json().catch(() => ({}));
+  const { mode } = input;
   if (mode === "morning") {
     webpush.setVapidDetails(
       Deno.env.get("VAPID_SUBJECT") ?? "mailto:admin@example.com",
@@ -162,6 +163,31 @@ Deno.serve(async (req) => {
       Deno.env.get("VAPID_PRIVATE_KEY")!,
     );
     return morningDigest(admin);
+  }
+  // Elle duyuru: {"mode":"broadcast","title":"...","body":"..."} → tüm telefonlara
+  if (mode === "broadcast") {
+    webpush.setVapidDetails(
+      Deno.env.get("VAPID_SUBJECT") ?? "mailto:admin@example.com",
+      Deno.env.get("VAPID_PUBLIC_KEY")!,
+      Deno.env.get("VAPID_PRIVATE_KEY")!,
+    );
+    const { title, body } = input;
+    const { data: subs } = await admin.from("push_subscriptions").select("*");
+    const payload = JSON.stringify({ title: title || "Baret Ajanda", body: body || "", tag: "broadcast", url: "./" });
+    let sent = 0;
+    const fails: string[] = [];
+    await Promise.all(((subs ?? []) as Row[]).map(async (s) => {
+      try {
+        await webpush.sendNotification({ endpoint: s.endpoint, keys: { p256dh: s.p256dh, auth: s.auth } }, payload, { TTL: 3600, urgency: "high" });
+        sent++;
+      } catch (err) {
+        const code = (err as { statusCode?: number }).statusCode;
+        if (code === 404 || code === 410) await admin.from("push_subscriptions").delete().eq("endpoint", s.endpoint);
+        fails.push(`${s.user_id.slice(0, 8)}:${code ?? (err as Error).message}`);
+      }
+    }));
+    await admin.from("push_log").insert({ kind: "broadcast", sent, failed: fails.length, detail: [title, ...fails].join(", ") });
+    return Response.json({ broadcast: true, sent });
   }
   const now = Date.now();
 
