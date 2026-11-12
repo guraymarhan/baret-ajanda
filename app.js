@@ -119,7 +119,8 @@ const demoBackend = {
 
 const cloudBackend = {
   async init() {
-    const { createClient } = await import("https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/+esm");
+    await import("./vendor/supabase.js"); // supabase-js 2.45.4 (UMD): kendi sitemizden, çevrimdışı önbellekte
+    const { createClient } = self.supabase;
     const recovering = /type=recovery/.test(location.hash);
     sb = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, { auth: { persistSession: true, autoRefreshToken: true } });
     const { data: { session } } = await sb.auth.getSession();
@@ -137,7 +138,7 @@ const cloudBackend = {
     await this.refresh();
   },
   async refresh() {
-    const since = addDays(new Date(), -120).toISOString();
+    const since = addDays(new Date(), -400).toISOString();
     const { data, error } = await sb.from("events").select("*").gte("starts_at", since).order("starts_at");
     if (error) { toast({ title: "Bağlantı sorunu", text: error.message }); return; }
     state.events.clear();
@@ -211,9 +212,9 @@ function notifyTeam(ev, action) {
 const MEANINGFUL = ["kind", "title", "starts_at", "ends_at", "all_day", "location", "notes", "remind_minutes", "done"];
 function onRemoteChange({ eventType, new: row, old }) {
   if (eventType === "DELETE") {
-    const prev = state.events.get(old.id) || old;
+    const prev = state.events.get(old.id); // listemizde yoksa (başkasının kişisel girdisi) bildirme
     state.events.delete(old.id);
-    if (!mineIds.delete(old.id) && prev.title) toast({ title: `${KINDS[prev.kind]?.emoji ?? ""} Silindi`, text: prev.title });
+    if (!mineIds.delete(old.id) && prev?.title) toast({ title: `${KINDS[prev.kind]?.emoji ?? ""} Silindi`, text: prev.title });
     render();
     return;
   }
@@ -264,6 +265,7 @@ async function subscribePush() {
   const j = sub.toJSON();
   const { error } = await sb.from("push_subscriptions").upsert({ endpoint: j.endpoint, p256dh: j.keys.p256dh, auth: j.keys.auth, user_id: state.me.id });
   if (error) { toast({ title: "Kaydedilemedi", text: error.message }); return false; }
+  store.set("baret.pushOff", false);
   toast({ title: "🔔 Bildirimler açık", text: "Ekip yeni bir şey eklediğinde haber vereceğiz." });
   return true;
 }
@@ -271,6 +273,7 @@ async function subscribePush() {
 // yeniler ya da sunucu geçersiz kaydı siler; bu olmazsa kişi fark etmeden bildirim almayı bırakır.
 async function syncPush() {
   if (!CLOUD || !pushSupported || !VAPID_PUBLIC_KEY || Notification.permission !== "granted") return;
+  if (store.get("baret.pushOff", false)) return; // kişi bildirimleri bu cihazda elle kapattı
   try {
     const reg = await navigator.serviceWorker.ready;
     let sub = await reg.pushManager.getSubscription();
@@ -279,7 +282,8 @@ async function syncPush() {
     await sb.from("push_subscriptions").upsert({ endpoint: j.endpoint, p256dh: j.keys.p256dh, auth: j.keys.auth, user_id: state.me.id, last_seen_at: new Date().toISOString() });
   } catch (err) { console.warn("push sync", err); }
 }
-async function unsubscribePush() {
+async function unsubscribePush(manual = false) {
+  if (manual) store.set("baret.pushOff", true);
   const reg = await navigator.serviceWorker.getRegistration();
   const sub = await reg?.pushManager.getSubscription();
   if (!sub) return;
@@ -391,6 +395,8 @@ let lastAnimKey = "";
 function render() {
   if (!state.me) return;
   const scrollY = window.scrollY;
+  const quick = $("#quick-task input"); // yazım sırasında yeniden çizilirse metin ve imleç korunur
+  const typed = quick && { value: quick.value, focused: document.activeElement === quick };
   const animKey = [state.view, state.filter, state.selected, state.month.getTime()].join("|");
   const anim = animKey !== lastAnimKey;
   lastAnimKey = animKey;
@@ -424,6 +430,8 @@ function render() {
       ${state.selected !== today() && state.view === "agenda" ? '<button class="today-pill" data-act="today">↺ Bugüne dön</button>' : ""}
       <button class="fab" data-act="${state.view === "tasks" ? "new-task" : "new"}">${ICON.plus}Ekle</button>
     </div>`;
+  const quickNow = $("#quick-task input");
+  if (typed && quickNow) { quickNow.value = typed.value; if (typed.focused) quickNow.focus({ preventScroll: true }); }
   window.scrollTo(0, scrollY);
 }
 /* ───────────────────────── Teslimatlar ───────────────────────── */
@@ -767,12 +775,15 @@ function openEvent(ev) {
     }
     form.all_day.addEventListener("change", () => { $(".time-row", body).hidden = form.all_day.checked; });
     form.date.addEventListener("change", () => { form.end_date.min = form.date.value; });
+    const mins = (v) => { const [h, m] = v.split(":").map(Number); return h * 60 + m; };
+    const hhmm = (n) => { n = ((n % 1440) + 1440) % 1440; return `${pad(Math.floor(n / 60))}:${pad(n % 60)}`; };
+    let prevStart = form.start.value;
     form.start.addEventListener("change", () => {
-      // Bitiş saati yoksa ya da başlangıçtan önce kaldıysa 1 saat sonrasına çek
-      if (draft.kind !== "reminder" && (!form.end.value || form.end.value <= form.start.value)) {
-        const [h, m] = form.start.value.split(":").map(Number);
-        form.end.value = `${pad(Math.min(h + 1, 23))}:${pad(m)}`;
-      }
+      if (!form.start.value) return;
+      // Başlangıç değişince bitiş de aynı kadar kayar (süre korunur); bitiş yoksa 1 saat sonrası
+      if (form.end.value && prevStart) form.end.value = hhmm(mins(form.end.value) + mins(form.start.value) - mins(prevStart));
+      else if (draft.kind !== "reminder") form.end.value = hhmm(mins(form.start.value) + 60);
+      prevStart = form.start.value;
     });
 
     form.addEventListener("submit", async (e) => {
@@ -789,6 +800,7 @@ function openEvent(ev) {
       } else if (fd.get("end")) {
         const [eh, em] = fd.get("end").split(":").map(Number);
         end = new Date(endDate[0], endDate[1] - 1, endDate[2], eh, em);
+        if (end < start) end = new Date(endDate[0], endDate[1] - 1, endDate[2] + 1, eh, em); // 23:00–01:00 gibi: ertesi güne taşar
         if (end <= start) end = null;
       }
       const payload = {
@@ -933,7 +945,7 @@ async function openSettings() {
       if (copy) { await navigator.clipboard?.writeText(copy.dataset.copy); toast({ title: "Kopyalandı", text: "Takvim linki panoda." }); }
       const act = e.target.closest("[data-act]")?.dataset.act;
       if (act === "push-on") { if (await subscribePush()) openSettings(); }
-      if (act === "push-off") { await unsubscribePush(); toast({ title: "Bildirimler kapatıldı" }); openSettings(); }
+      if (act === "push-off") { await unsubscribePush(true); toast({ title: "Bildirimler kapatıldı" }); openSettings(); }
       if (act === "signout") backend.signOut();
       if (act === "reset-demo" && confirm("Deneme verileri silinip örnek ajanda yeniden yüklensin mi?")) { localStorage.removeItem(demoBackend.KEY); location.reload(); }
     });
@@ -1157,7 +1169,11 @@ async function boot() {
   if ("serviceWorker" in navigator) {
     navigator.serviceWorker.register("sw.js").catch((e) => console.warn("SW", e));
     navigator.storage?.persist?.().catch(() => {}); // tarayıcıdan verileri silmemesini iste
-    navigator.serviceWorker.addEventListener("message", (e) => { if (e.data?.type === "open") handleUrl(e.data.url); });
+    navigator.serviceWorker.addEventListener("message", async (e) => {
+      if (e.data?.type !== "open") return;
+      await backend?.refresh?.(); // uygulama arka plandayken eklenen girdi henüz listede olmayabilir
+      handleUrl(e.data.url);
+    });
   }
   backend = CLOUD ? cloudBackend : demoBackend;
   try {

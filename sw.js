@@ -1,6 +1,6 @@
 // Baret Ajanda – service worker: çevrimdışı açılış + push bildirimleri
-const CACHE = "baret-v15";
-const SHELL = ["./", "index.html", "styles.css", "app.js", "config.js", "manifest.webmanifest",
+const CACHE = "baret-v16";
+const SHELL = ["./", "index.html", "styles.css", "app.js", "config.js", "manifest.webmanifest", "vendor/supabase.js",
   "icons/icon-192.png", "icons/icon-512.png", "icons/apple-touch-icon.png"];
 
 self.addEventListener("install", (e) => {

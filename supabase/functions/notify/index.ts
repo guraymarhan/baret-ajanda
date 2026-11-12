@@ -31,13 +31,23 @@ function whenText(ev: { starts_at: string; all_day: boolean }) {
 
 // Gönderen hariç tüm ekip üyelerinin telefonlarına push gönderir
 // deno-lint-ignore no-explicit-any
-async function pushToOthers(admin: any, senderId: string | null, message: Record<string, unknown>) {
+function pushToOthers(admin: any, senderId: string | null, message: Record<string, unknown>) {
+  const work = pushNow(admin, senderId, message);
+  // Kaydedip uygulamayı hemen kapatan kişinin bağlantısı kopsa bile gönderim yarıda kalmasın
+  // deno-lint-ignore no-explicit-any
+  (globalThis as any).EdgeRuntime?.waitUntil?.(work);
+  return work;
+}
+// deno-lint-ignore no-explicit-any
+async function pushNow(admin: any, senderId: string | null, message: Record<string, unknown>) {
   webpush.setVapidDetails(
     Deno.env.get("VAPID_SUBJECT") ?? "mailto:admin@example.com",
     Deno.env.get("VAPID_PUBLIC_KEY")!,
     Deno.env.get("VAPID_PRIVATE_KEY")!,
   );
-  const payload = JSON.stringify(message);
+  // Etiket her bildirimde farklı olmalı: iPhone aynı etiketli yeni bildirimi, bildirim merkezinde
+  // duran eskisinin yerine sessizce koyuyor ve ekranda göstermiyor.
+  const payload = JSON.stringify({ ...message, tag: `${message.tag ?? "baret"}-${Date.now()}` });
   const q = admin.from("push_subscriptions").select("*");
   const { data: subs } = senderId ? await q.neq("user_id", senderId) : await q;
   let sent = 0;
@@ -77,7 +87,7 @@ Deno.serve(async (req) => {
     return json({ sent: await pushToOthers(admin, null, {
       title: `📣 ${actor?.name ?? "Ekip"}`,
       body: msg,
-      tag: `broadcast-${Date.now()}`,
+      tag: "broadcast",
       url: "./",
     }) });
   }

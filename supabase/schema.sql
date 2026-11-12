@@ -62,11 +62,16 @@ end $$;
 create or replace function public.touch_event()
 returns trigger language plpgsql as $$
 begin
+  -- Sunucu sadece "hatırlatıldı" işaretini değiştirdiyse düzenleme sayılmaz
+  if to_jsonb(new) - 'reminded' = to_jsonb(old) - 'reminded' then
+    return new;
+  end if;
   new.updated_at := now();
   new.updated_by := coalesce(auth.uid(), new.updated_by);
   -- Saat ya da hatırlatma değiştiyse hatırlatıcı yeniden gönderilsin
   if new.starts_at is distinct from old.starts_at
-     or new.remind_minutes is distinct from old.remind_minutes then
+     or new.remind_minutes is distinct from old.remind_minutes
+     or new.all_day is distinct from old.all_day then
     new.reminded := false;
   end if;
   return new;
@@ -114,6 +119,8 @@ create table if not exists public.push_subscriptions (
   created_at  timestamptz not null default now()
 );
 alter table public.push_subscriptions add column if not exists last_seen_at timestamptz;
+-- Sabah özetinin bu telefona en son gittiği gün (günde bir kez gitsin, gitmediyse yeniden denensin)
+alter table public.push_subscriptions add column if not exists morning_day date;
 
 -- Bildirim gönderim kaydı (sadece sunucu yazar; kontrol için Table Editor → push_log)
 create table if not exists public.push_log (
